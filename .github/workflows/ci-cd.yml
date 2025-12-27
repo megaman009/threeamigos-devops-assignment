@@ -56,6 +56,7 @@ jobs:
       - name: Run product-service tests
         run: cd product-service && npm test -- --coverage --watchAll=false
         env:
+          NODE_ENV: test
           DATABASE_URL: postgresql://postgres:password@localhost:5432/thamco
           REDIS_URL: redis://localhost:6379
           USER_SERVICE_URL: http://localhost:3001
