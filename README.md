@@ -46,6 +46,9 @@ This system implements a microservices-based e-commerce platform with:
    **🚀 Azure Cloud Deployment Available!**
    See `AZURE_DEPLOYMENT.md` for professional cloud hosting instructions.
 
+   **🆓 FREE Deployment Options Available!**
+   See `FREE_DEPLOYMENT.md` for zero-cost hosting alternatives.
+
 4. **Verify services are running:**
 
    ```bash
