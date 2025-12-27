@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -70,10 +74,8 @@ jobs:
           docker build -t thamco-user-service ./user-service
           docker build -t thamco-frontend ./frontend
 
-      - name: Test Docker Compose
-        run: |
-          docker compose config
-          echo "Docker Compose configuration is valid"
+      - name: Validate Docker Compose
+        run: docker compose config --quiet
 
   security-scan:
     runs-on: ubuntu-latest
@@ -92,8 +94,7 @@ jobs:
           output: "trivy-results.sarif"
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: "trivy-results.sarif"
 
@@ -112,57 +113,21 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Login to Azure Container Registry
-        run: |
-          az acr login --name ${{ secrets.ACR_NAME }}
+        run: az acr login --name ${{ secrets.ACR_NAME }}
 
       - name: Build and push Docker images
         run: |
-          # Build and tag images for Azure Container Registry
           docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }} ./product-service
           docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }} ./user-service
           docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }} ./frontend
 
-          # Also tag as latest
           docker tag ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/product-service:latest
           docker tag ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/user-service:latest
           docker tag ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
 
-          # Push images
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }}
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }}
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }}
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/product-service:latest
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/user-service:latest
           docker push ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
-
-      - name: Deploy to Azure Container Apps
-        run: |
-          # Create/update container apps
-          az containerapp update \
-            --name product-service \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --image ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }} \
-            --set-env-vars DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-                           REDIS_URL="${{ secrets.REDIS_URL }}" \
-                           USER_SERVICE_URL="https://user-service.internal.azurecontainerapps.io" \
-            --query properties.configuration.ingress.fqdn
-
-          az containerapp update \
-            --name user-service \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --image ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }} \
-            --set-env-vars DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            --query properties.configuration.ingress.fqdn
-
-          az containerapp update \
-            --name frontend \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --image ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }} \
-            --query properties.configuration.ingress.fqdn
-
-      - name: Get deployment URLs
-        run: |
-          echo "🚀 Deployment Complete!"
-          echo "Frontend URL: https://$(az containerapp show --name frontend --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query properties.configuration.ingress.fqdn -o tsv)"
-          echo "Product API: https://$(az containerapp show --name product-service --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query properties.configuration.ingress.fqdn -o tsv)"
-          echo "User API: https://$(az containerapp show --name user-service --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --query properties.configuration.ingress.fqdn -o tsv)"
