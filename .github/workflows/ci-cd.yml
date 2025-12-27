@@ -72,7 +72,7 @@ jobs:
 
       - name: Test Docker Compose
         run: |
-          docker-compose config --quiet
+          docker compose config
           echo "Docker Compose configuration is valid"
 
   security-scan:
