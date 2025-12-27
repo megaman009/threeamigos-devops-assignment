@@ -1,13 +1,16 @@
 # ThAmCo E-Commerce Microservices System
 
-A cloud-native, containerized e-commerce platform built with microservices architecture, demonstrating DevOps best practices for Cloud Computing assignments.
+**Cloud Computing DevOps Assignment - Complete Microservices Platform**
+
+A containerized e-commerce platform demonstrating DevOps best practices including microservices architecture, automated testing, CI/CD pipelines, and production deployment.
 
 ## 🏗️ Architecture Overview
 
-This system implements a microservices-based e-commerce platform with the following components:
+This system implements a microservices-based e-commerce platform with:
 
 - **Product Service** (Port 3000): Manages product catalog with PostgreSQL persistence and Redis caching
 - **User Service** (Port 3001): Handles user management and authentication
+- **React Frontend** (Port 3002): User interface consuming microservices APIs
 - **PostgreSQL**: Primary database for persistent data storage
 - **Redis**: In-memory cache for performance optimization
 
@@ -21,10 +24,11 @@ This system implements a microservices-based e-commerce platform with the follow
 
 ### Running the System
 
-1. **Clone and navigate to the project:**
+1. **Clone the repository:**
 
    ```bash
-   cd threeamigos
+   git clone https://github.com/megaman009/threeamigos-devops-assignment.git
+   cd threeamigos-devops-assignment
    ```
 
 2. **Start all services:**
@@ -33,19 +37,21 @@ This system implements a microservices-based e-commerce platform with the follow
    docker-compose up --build
    ```
 
-3. **Verify services are running:**
+3. **Access the application:**
+
+   - **Frontend**: http://localhost:3002
+   - **Product API**: http://localhost:3000
+   - **User API**: http://localhost:3001
+
+4. **Verify services are running:**
 
    ```bash
-   # Product Service Health Check
+   # Health checks
    curl http://localhost:3000/health
-
-   # User Service Health Check
    curl http://localhost:3001/health
 
-   # Get Products (with caching)
+   # API endpoints
    curl http://localhost:3000/products
-
-   # Service-to-Service Communication
    curl http://localhost:3000/product-with-user
    ```
 
@@ -53,72 +59,83 @@ This system implements a microservices-based e-commerce platform with the follow
 
 ### Product Service (`/product-service`)
 
-**Endpoints:**
-
-- `GET /health` - Service health check
-- `GET /products` - Retrieve all products (with Redis caching)
-- `GET /product-with-user` - Demonstrate service-to-service communication
-
-**Features:**
-
-- PostgreSQL integration with automatic schema creation
-- Redis caching (5-minute TTL)
-- Comprehensive error handling
-- Automated testing with Jest/Supertest
+- **Port**: 3000
+- **Features**: Product catalog management, Redis caching, PostgreSQL integration
+- **Endpoints**: `/health`, `/products`, `/product-with-user`
 
 ### User Service (`/user-service`)
 
-**Endpoints:**
+- **Port**: 3001
+- **Features**: User management and authentication
+- **Endpoints**: `/health`, `/user`
 
-- `GET /health` - Service health check
-- `GET /user` - Retrieve user information
+### React Frontend (`/frontend`)
 
-**Features:**
-
-- Lightweight user management
-- Health monitoring
-- Container-ready
+- **Port**: 3002
+- **Features**: Modern React UI consuming microservices APIs
+- **Components**: Product display, user information, API integration
 
 ## 🧪 Testing
 
 ### Automated Tests
 
 ```bash
-# Run product service tests
-cd product-service && npm test
-
-# Run tests in container
+# Run all service tests
 docker-compose exec product-service npm test
+docker-compose exec user-service npm test
+
+# Or run locally
+cd product-service && npm test
+cd user-service && npm test
 ```
 
 **Test Coverage:**
 
 - ✅ Health check endpoints
 - ✅ Product retrieval with caching
-- ✅ Database error handling
+- ✅ Database connectivity
 - ✅ Service-to-service communication
 - ✅ API response validation
 
-## 🐳 Containerization
+## 🐳 Containerization & DevOps
 
-### Docker Images
+### Docker Services
 
-- `threeamigos_product-service:latest` - Node.js application with dependencies
-- `threeamigos_user-service:latest` - Node.js application
-- `postgres:15` - PostgreSQL database
-- `redis:7-alpine` - Redis cache
+- Multi-service orchestration with Docker Compose
+- Health checks and dependency management
+- Environment-based configuration
+- Production-ready containerization
 
-### Environment Variables
+### CI/CD Pipeline
 
-```yaml
-# Product Service
-USER_SERVICE_URL=http://user-service:3001
-DATABASE_URL=postgresql://postgres:password@postgres:5432/thamco
-REDIS_URL=redis://redis:6379
+- **GitHub Actions** automated pipeline (`.github/workflows/ci-cd.yml`)
+- Automated testing on every push
+- Security scanning with Trivy
+- Docker image building and verification
+- Deployment automation scripts
 
-# User Service
-DATABASE_URL=postgresql://postgres:password@postgres:5432/thamco
+### Production Deployment
+
+```bash
+# Production deployment
+./deploy.sh
+
+# Health monitoring
+./health-check.sh
 ```
+
+## 📊 DevOps Features Demonstrated
+
+- ✅ **Microservices Architecture**: Independent, scalable services
+- ✅ **Container Orchestration**: Docker Compose multi-service management
+- ✅ **Automated Testing**: Jest test suite with comprehensive coverage
+- ✅ **CI/CD Pipeline**: GitHub Actions with automated workflows
+- ✅ **Security Scanning**: Container vulnerability assessment
+- ✅ **Health Monitoring**: Built-in service health checks
+- ✅ **Database Integration**: PostgreSQL with connection management
+- ✅ **Caching Strategy**: Redis for performance optimization
+- ✅ **API Design**: RESTful endpoints with proper error handling
+- ✅ **Frontend-Backend Integration**: React consuming microservices
 
 ## 🗄️ Database Schema
 
@@ -139,66 +156,6 @@ CREATE TABLE products (
 - Coffee Beans (42 units, $12.99)
 - Espresso Machine (5 units, $299.99)
 
-## 🔧 Development
-
-### Local Development Setup
-
-```bash
-# Install dependencies for each service
-cd product-service && npm install
-cd ../user-service && npm install
-
-# Run services locally (requires PostgreSQL and Redis running)
-cd product-service && npm start
-cd user-service && npm start
-```
-
-### Adding New Features
-
-1. Update service code
-2. Add tests in `*.test.js`
-3. Update Docker configuration if needed
-4. Test with `docker-compose up --build`
-
-## 📊 Monitoring & Health Checks
-
-All services include health check endpoints and Docker health checks:
-
-- HTTP-based health checks every 10 seconds
-- 3-second timeout with 3 retries
-- Automatic service dependency management
-
-## 🏭 DevOps Features
-
-- ✅ **Containerization**: Full Docker/Podman support
-- ✅ **Orchestration**: Docker Compose for multi-service management
-- ✅ **Automated Testing**: Jest test suite with 6 passing tests
-- ✅ **Health Monitoring**: Built-in health checks
-- ✅ **Environment Configuration**: Environment-based settings
-- ✅ **Error Handling**: Comprehensive error management
-- ✅ **Caching**: Redis integration for performance
-- ✅ **Database Integration**: PostgreSQL with connection pooling
-
-## 🚀 Deployment
-
-### Production Considerations
-
-- Environment-specific configurations
-- Database migrations
-- Load balancing
-- Monitoring and logging
-- Security hardening
-
-### Scaling
-
-```bash
-# Scale services
-docker-compose up --scale product-service=3
-
-# Update services
-docker-compose up --build --force-recreate
-```
-
 ## 📚 API Documentation
 
 ### Product Service API
@@ -207,131 +164,70 @@ docker-compose up --build --force-recreate
 
 Returns service health status.
 
-**Response:**
-
-```json
-{
-  "status": "Product Service is healthy"
-}
-```
-
 #### GET /products
 
-Retrieves all products with caching.
-
-**Response:**
-
-```json
-[
-  {
-    "id": 1,
-    "name": "Coffee Beans",
-    "stock": 42,
-    "price": 12.99
-  }
-]
-```
+Retrieves all products (with Redis caching).
 
 #### GET /product-with-user
 
-Demonstrates service-to-service communication.
+Demonstrates inter-service communication.
 
-**Response:**
+### User Service API
 
-```json
-{
-  "product": {
-    "id": 1,
-    "name": "Coffee Beans",
-    "stock": 42,
-    "price": 12.99
-  },
-  "user": {
-    "id": 101,
-    "name": "Test User",
-    "role": "customer"
-  }
-}
-```
+#### GET /health
 
-## 🚀 Production Deployment
+Returns service health status.
 
-### Prerequisites
+#### GET /user
 
-- Docker and Docker Compose
-- Environment variables configured (see `.env.example`)
+Retrieves user information.
 
-### Production Setup
+## 🔧 Development
 
-1. **Configure environment:**
-
-   ```bash
-   cp .env.example .env
-   # Edit .env with your production values
-   ```
-
-2. **Deploy to production:**
-
-   ```bash
-   ./deploy.sh
-   ```
-
-   This script will:
-
-   - Build production Docker images
-   - Run automated tests
-   - Perform security scanning (if Trivy is installed)
-   - Start services with production configuration
-
-3. **Monitor deployment:**
-
-   ```bash
-   ./health-check.sh
-   ```
-
-### Production Features
-
-- **Load Balancing & Reverse Proxy**: Nginx with SSL termination
-- **Health Checks**: Automated service monitoring
-- **Rate Limiting**: API protection against abuse
-- **Security Headers**: OWASP recommended headers
-- **Gzip Compression**: Optimized content delivery
-- **Persistent Storage**: Named volumes for data persistence
-
-### Production URLs
-
-- **Frontend**: https://your-domain.com
-- **Product API**: https://your-domain.com/api/products
-- **User API**: https://your-domain.com/api/users
-- **Health Check**: https://your-domain.com/health
-
-### SSL Configuration
-
-For SSL support, place your certificates in `nginx/ssl/`:
-
-- `cert.pem` - SSL certificate
-- `key.pem` - Private key
-
-Then run with SSL profile:
+### Local Development Setup
 
 ```bash
-docker-compose -f docker-compose.prod.yml --profile production-with-ssl up -d
+# Install dependencies
+cd product-service && npm install
+cd ../user-service && npm install
+cd ../frontend && npm install
+
+# Run services (requires local PostgreSQL/Redis)
+npm start  # in each service directory
 ```
 
-## 🤝 Contributing
+### Project Structure
 
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+```
+threeamigos-devops-assignment/
+├── docker-compose.yml          # Development environment
+├── docker-compose.prod.yml     # Production configuration
+├── .github/workflows/ci-cd.yml # CI/CD pipeline
+├── product-service/            # Product microservice
+├── user-service/              # User microservice
+├── frontend/                  # React frontend
+├── nginx/                     # Production reverse proxy
+├── deploy.sh                  # Deployment automation
+└── health-check.sh           # Monitoring script
+```
 
-## 📄 License
+## 📄 Assignment Requirements Met
 
-This project is created for educational purposes as part of a Cloud Computing DevOps assignment.
+This project demonstrates all key DevOps concepts:
+
+- **Microservices**: Independent services with clear boundaries
+- **Containerization**: Full Docker implementation
+- **Orchestration**: Multi-service management
+- **Testing**: Automated test suites
+- **CI/CD**: GitHub Actions pipeline
+- **Monitoring**: Health checks and logging
+- **Security**: Container scanning and best practices
+- **Documentation**: Comprehensive setup and API docs
+- **Version Control**: Git with proper commit history
+- **Production Ready**: Deployment scripts and configuration
 
 ---
 
-**Built with:** Node.js, Express, PostgreSQL, Redis, Docker, Jest
-**Architecture:** Microservices, Containerized, Cloud-Native</content>
-<parameter name="filePath">/home/megaman/Desktop/CloudComputingDevOpsAssignment/threeamigos/README.md
+**Built for:** Cloud Computing DevOps Assignment
+**Technologies:** Node.js, Express, React, PostgreSQL, Redis, Docker, Jest, GitHub Actions
+**Architecture:** Microservices, Containerized, Cloud-Native
