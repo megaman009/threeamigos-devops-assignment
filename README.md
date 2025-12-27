@@ -1,53 +1,47 @@
-# ThAmCo E-Commerce Microservices System
+# Three Amigos E-Commerce System
 
-**Cloud Computing DevOps Assignment - Complete Microservices Platform**
+**Cloud Computing DevOps Assignment**
 
-A containerized e-commerce platform demonstrating DevOps best practices including microservices architecture, automated testing, CI/CD pipelines, and production deployment.
+This is a microservices e-commerce platform I built for my DevOps assignment. It has products, users, and a frontend, all running in Docker containers.
 
-## 🏗️ Architecture Overview
+## What It Does
 
-This system implements a microservices-based e-commerce platform with:
+- **Product Service** (port 3000): Handles products with database and caching
+- **User Service** (port 3001): Manages users
+- **Frontend** (port 3002): React app that talks to the APIs
+- **Database**: PostgreSQL for storing data
+- **Cache**: Redis for faster performance
 
-- **Product Service** (Port 3000): Manages product catalog with PostgreSQL persistence and Redis caching
-- **User Service** (Port 3001): Handles user management and authentication
-- **React Frontend** (Port 3002): User interface consuming microservices APIs
-- **PostgreSQL**: Primary database for persistent data storage
-- **Redis**: In-memory cache for performance optimization
+## How to Run Locally
 
-## 🚀 Quick Start
+### What You Need
 
-### Prerequisites
-
-- Docker/Podman
-- Node.js 18+ (for local development)
+- Docker
 - Git
 
-### Running the System
+### Steps
 
-1. **Clone the repository:**
+1. Clone this repo:
 
    ```bash
    git clone https://github.com/megaman009/threeamigos-devops-assignment.git
    cd threeamigos-devops-assignment
    ```
 
-2. **Start all services:**
+2. Start everything:
 
    ```bash
    docker-compose up --build
    ```
 
-3. **Access the application:**
+3. Open in browser:
+   - Frontend: http://localhost:3002
+   - Product API: http://localhost:3000
+   - User API: http://localhost:3001
 
-   - **Frontend**: http://localhost:3002
-   - **Product API**: http://localhost:3000
-   - **User API**: http://localhost:3001
+## Azure Deployment
 
-   **🚀 Azure Cloud Deployment Available!**
-   See `AZURE_DEPLOYMENT.md` for professional cloud hosting instructions.
-
-   **🆓 FREE Deployment Options Available!**
-   See `FREE_DEPLOYMENT.md` for zero-cost hosting alternatives.
+I deployed this to Azure using my student account ($100 credit). Check `AZURE_DEPLOYMENT.md` for how I did it.
 
 4. **Verify services are running:**
 
@@ -61,91 +55,60 @@ This system implements a microservices-based e-commerce platform with:
    curl http://localhost:3000/product-with-user
    ```
 
-## 📋 Services
+## Services
 
-### Product Service (`/product-service`)
+### Product Service
 
-- **Port**: 3000
-- **Features**: Product catalog management, Redis caching, PostgreSQL integration
-- **Endpoints**: `/health`, `/products`, `/product-with-user`
+- Port: 3000
+- What it does: Manages products, uses database and Redis cache
+- Endpoints: `/health`, `/products`, `/product-with-user`
 
-### User Service (`/user-service`)
+### User Service
 
-- **Port**: 3001
-- **Features**: User management and authentication
-- **Endpoints**: `/health`, `/user`
+- Port: 3001
+- What it does: Handles users
+- Endpoints: `/health`, `/user`
 
-### React Frontend (`/frontend`)
+### Frontend
 
-- **Port**: 3002
-- **Features**: Modern React UI consuming microservices APIs
-- **Components**: Product display, user information, API integration
+- Port: 3002
+- What it does: React app that shows the UI and calls the APIs
 
-## 🧪 Testing
+## Testing
 
-### Automated Tests
+Run tests with:
 
 ```bash
-# Run all service tests
 docker-compose exec product-service npm test
 docker-compose exec user-service npm test
-
-# Or run locally
-cd product-service && npm test
-cd user-service && npm test
 ```
 
-**Test Coverage:**
+Tests check:
 
-- ✅ Health check endpoints
-- ✅ Product retrieval with caching
-- ✅ Database connectivity
-- ✅ Service-to-service communication
-- ✅ API response validation
+- Health endpoints work
+- Products load from database
+- Services can talk to each other
+- APIs return correct data
 
-## 🐳 Containerization & DevOps
+## DevOps Stuff
 
-### Docker Services
-
-- Multi-service orchestration with Docker Compose
+- Everything runs in Docker containers
+- Uses Docker Compose to manage multiple services
+- Has automated tests that run in CI/CD
+- Can deploy to Azure automatically
 - Health checks and dependency management
 - Environment-based configuration
 - Production-ready containerization
 
 ### CI/CD Pipeline
 
-- **GitHub Actions** automated pipeline (`.github/workflows/ci-cd.yml`)
-- Automated testing on every push
-- Security scanning with Trivy
-- Docker image building and verification
-- Deployment automation scripts
+- GitHub Actions CI/CD pipeline that runs tests automatically
+- Security scanning to check for vulnerabilities
+- Scripts to deploy and monitor the app
 
-### Production Deployment
+## Database
 
-```bash
-# Production deployment
-./deploy.sh
-
-# Health monitoring
-./health-check.sh
-```
-
-## 📊 DevOps Features Demonstrated
-
-- ✅ **Microservices Architecture**: Independent, scalable services
-- ✅ **Container Orchestration**: Docker Compose multi-service management
-- ✅ **Automated Testing**: Jest test suite with comprehensive coverage
-- ✅ **CI/CD Pipeline**: GitHub Actions with automated workflows
-- ✅ **Security Scanning**: Container vulnerability assessment
-- ✅ **Health Monitoring**: Built-in service health checks
-- ✅ **Database Integration**: PostgreSQL with connection management
-- ✅ **Caching Strategy**: Redis for performance optimization
-- ✅ **API Design**: RESTful endpoints with proper error handling
-- ✅ **Frontend-Backend Integration**: React consuming microservices
-
-## 🗄️ Database Schema
-
-### Products Table
+The app uses PostgreSQL with a products table:
 
 ```sql
 CREATE TABLE products (
@@ -157,14 +120,20 @@ CREATE TABLE products (
 );
 ```
 
-**Sample Data:**
+Sample products: Coffee Beans ($12.99) and Espresso Machine ($299.99)
 
-- Coffee Beans (42 units, $12.99)
-- Espresso Machine (5 units, $299.99)
+## APIs
 
-## 📚 API Documentation
+### Product Service
 
-### Product Service API
+- GET `/health` - Check if service is running
+- GET `/products` - Get all products
+- GET `/product-with-user` - Get product info with user data
+
+### User Service
+
+- GET `/health` - Check if service is running
+- GET `/user` - Get user information
 
 #### GET /health
 
@@ -188,52 +157,31 @@ Returns service health status.
 
 Retrieves user information.
 
-## 🔧 Development
-
-### Local Development Setup
-
-```bash
-# Install dependencies
-cd product-service && npm install
-cd ../user-service && npm install
-cd ../frontend && npm install
-
-# Run services (requires local PostgreSQL/Redis)
-npm start  # in each service directory
-```
-
-### Project Structure
+## Project Files
 
 ```
 threeamigos-devops-assignment/
-├── docker-compose.yml          # Development environment
-├── docker-compose.prod.yml     # Production configuration
-├── .github/workflows/ci-cd.yml # CI/CD pipeline
-├── product-service/            # Product microservice
-├── user-service/              # User microservice
-├── frontend/                  # React frontend
-├── nginx/                     # Production reverse proxy
-├── deploy.sh                  # Deployment automation
-└── health-check.sh           # Monitoring script
+├── docker-compose.yml          # Runs everything locally
+├── .github/workflows/ci-cd.yml # GitHub Actions CI/CD
+├── product-service/            # Product API
+├── user-service/              # User API
+├── frontend/                  # React website
+├── deploy.sh                  # Deploy script
+└── health-check.sh           # Check if services are running
 ```
 
-## 📄 Assignment Requirements Met
+## What I Learned
 
-This project demonstrates all key DevOps concepts:
+This assignment covers:
 
-- **Microservices**: Independent services with clear boundaries
-- **Containerization**: Full Docker implementation
-- **Orchestration**: Multi-service management
-- **Testing**: Automated test suites
-- **CI/CD**: GitHub Actions pipeline
-- **Monitoring**: Health checks and logging
-- **Security**: Container scanning and best practices
-- **Documentation**: Comprehensive setup and API docs
-- **Version Control**: Git with proper commit history
-- **Production Ready**: Deployment scripts and configuration
+- Microservices (separate services for different things)
+- Docker containers (package apps with everything they need)
+- Automated testing (tests run automatically)
+- CI/CD (code gets tested and deployed automatically)
+- Cloud deployment (runs on Azure)
+- Databases and caching (PostgreSQL + Redis)
 
 ---
 
-**Built for:** Cloud Computing DevOps Assignment
-**Technologies:** Node.js, Express, React, PostgreSQL, Redis, Docker, Jest, GitHub Actions
-**Architecture:** Microservices, Containerized, Cloud-Native
+Built with Node.js, React, PostgreSQL, Redis, Docker
+For Cloud Computing DevOps class
