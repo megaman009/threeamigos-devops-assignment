@@ -41,7 +41,7 @@ This is a microservices e-commerce platform I built for my DevOps assignment. It
 
 ## Azure Deployment
 
-I deployed this to Azure using my student account ($100 credit). Check `AZURE_DEPLOYMENT.md` for how I did it.
+I deployed this to Azure. Check `AZURE_DEPLOYMENT.md` for how I did it.
 
 4. **Verify services are running:**
 

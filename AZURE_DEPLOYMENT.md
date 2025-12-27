@@ -123,6 +123,7 @@ After deployment, you'll have:
 ## 💰 Cost Information - Azure for Students
 
 ### 🎓 **Azure for Students Benefits:**
+
 - **$100 credit** for 12 months
 - **Free services** available
 - **No credit card required** initially
@@ -130,12 +131,14 @@ After deployment, you'll have:
 ### 💸 **Realistic Cost Breakdown:**
 
 **Free Tier Options Available:**
+
 - Container Apps: 2 million requests free/month
 - Container Registry: First 5GB free
 - PostgreSQL: Basic tier might be free for students
 - Redis: Basic C0 (256MB) is very cheap
 
 **Paid Services (if needed):**
+
 - Container Apps: ~$0.01/hour × 3 services = ~$0.75/day
 - PostgreSQL: ~$0.02/hour = ~$0.48/day
 - Redis: ~$0.01/hour = ~$0.24/day
@@ -152,12 +155,14 @@ After deployment, you'll have:
 5. **GitHub Codespaces** - Free for public repos
 
 ### 🎯 **Recommendation:**
+
 - Use **Azure free tiers** first (you have $100 credit)
 - Deploy for **3-5 days** only
 - **Delete resources** after demo
 - Total cost: **$5-10** for your assignment demo
 
 ### 🗑️ **How to Delete Resources (Important!):**
+
 ```bash
 # Delete entire resource group (removes everything)
 az group delete --name threeamigos-rg --yes
