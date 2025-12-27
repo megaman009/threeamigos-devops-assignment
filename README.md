@@ -43,6 +43,9 @@ This system implements a microservices-based e-commerce platform with:
    - **Product API**: http://localhost:3000
    - **User API**: http://localhost:3001
 
+   **🚀 Azure Cloud Deployment Available!**
+   See `AZURE_DEPLOYMENT.md` for professional cloud hosting instructions.
+
 4. **Verify services are running:**
 
    ```bash
