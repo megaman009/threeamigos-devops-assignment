@@ -1,0 +1,128 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: thamco
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: |
+            product-service/package-lock.json
+            user-service/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install product-service dependencies
+        run: cd product-service && npm ci
+
+      - name: Install user-service dependencies
+        run: cd user-service && npm ci
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Run product-service tests
+        run: cd product-service && npm test -- --coverage --watchAll=false
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/thamco
+          REDIS_URL: redis://localhost:6379
+          USER_SERVICE_URL: http://localhost:3001
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Build Docker images
+        run: |
+          docker build -t thamco-product-service ./product-service
+          docker build -t thamco-user-service ./user-service
+          docker build -t thamco-frontend ./frontend
+
+      - name: Test Docker Compose
+        run: |
+          docker-compose config --quiet
+          echo "Docker Compose configuration is valid"
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-results.sarif"
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker images
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/thamco-product-service:latest ./product-service
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/thamco-user-service:latest ./user-service
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/thamco-frontend:latest ./frontend
+
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/thamco-product-service:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/thamco-user-service:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/thamco-frontend:latest
+
+      - name: Deploy to production
+        run: |
+          echo "Deployment would happen here"
+          echo "Using docker-compose.prod.yml for production deployment"
+          echo "Consider using AWS ECS, Azure Container Apps, or similar"
