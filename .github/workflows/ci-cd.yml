@@ -103,36 +103,39 @@ jobs:
         with:
           sarif_file: "trivy-results.sarif"
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: [test, security-scan]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Login to Azure Container Registry
-        run: az acr login --name ${{ secrets.ACR_NAME }}
-
-      - name: Build and push Docker images
-        run: |
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }} ./product-service
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }} ./user-service
-          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }} ./frontend
-
-          docker tag ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/product-service:latest
-          docker tag ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/user-service:latest
-          docker tag ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
-
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }}
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }}
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }}
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/product-service:latest
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/user-service:latest
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
+  # Deploy job is skipped until Azure credentials are configured
+  # To enable: Set AZURE_CREDENTIALS secret in GitHub with service principal credentials
+  # See setup-azure.sh for credential generation
+  # deploy:
+  #   runs-on: ubuntu-latest
+  #   needs: [test, security-scan]
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Login to Azure
+  #       uses: azure/login@v2
+  #       with:
+  #         creds: ${{ secrets.AZURE_CREDENTIALS }}
+  #
+  #     - name: Login to Azure Container Registry
+  #       run: az acr login --name ${{ secrets.ACR_NAME }}
+  #
+  #     - name: Build and push Docker images
+  #       run: |
+  #         docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }} ./product-service
+  #         docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }} ./user-service
+  #         docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }} ./frontend
+  #
+  #         docker tag ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/product-service:latest
+  #         docker tag ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/user-service:latest
+  #         docker tag ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
+  #
+  #         docker push ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }}
+  #         docker push ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }}
+  #         docker push ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }}
+  #         docker push ${{ secrets.ACR_NAME }}.azurecr.io/product-service:latest
+  #         docker push ${{ secrets.ACR_NAME }}.azurecr.io/user-service:latest
+  #         docker push ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
