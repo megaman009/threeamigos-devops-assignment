@@ -1,0 +1,18 @@
+Trade-offs and Decisions:
+
+1. Microservice Architecture:
+   Pros: Isolated failures, scalable, easier to maintain.
+   Cons: Increased deployment complexity, more moving parts.
+
+2. Auth0 for Authentication:
+   Pros: Avoids custom auth logic, secure, industry-standard.
+   Cons: Introduces external dependency, requires internet connectivity.
+
+3. Azure Managed Services:
+   Pros: Less operational overhead, enterprise-grade support.
+   Cons: Limits low-level control, some configuration choices abstracted.
+
+4. Mocked Supplier API:
+   Pros: Enables safe development without external dependency.
+   Cons: Not a production-ready integration.
+

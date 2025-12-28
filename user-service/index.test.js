@@ -86,4 +86,31 @@ describe('User Service API Tests', () => {
       expect(response.body.role).toBe('customer');
     });
   });
+
+  describe('GET /funds', () => {
+    it('should return default funds for a user', async () => {
+      process.env.DEFAULT_FUNDS = '150';
+      const response = await request(app)
+        .get('/funds?userId=101')
+        .expect(200);
+      expect(response.body).toEqual({ userId: '101', funds: 150 });
+    });
+  });
+
+  describe('DELETE /users/:id', () => {
+    it('should anonymise user when authorized', async () => {
+      const response = await request(app)
+        .delete('/users/101')
+        .set('Authorization', 'Bearer valid-token')
+        .expect(200);
+      expect(response.body).toMatchObject({ message: 'Account anonymised (stub)', user: { id: '101', status: 'anonymised' } });
+    });
+
+    it('should reject when not authorized', async () => {
+      const response = await request(app)
+        .delete('/users/101')
+        .expect(401);
+      expect(response.body).toEqual({ error: 'No authorization token was found' });
+    });
+  });
 });

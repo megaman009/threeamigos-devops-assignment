@@ -47,6 +47,26 @@ app.get('/user', checkJwt, getUserInfo, (req, res) => {
   });
 });
 
+// Public funds endpoint (mock) for inter-service checks
+app.get('/funds', (req, res) => {
+  const userId = req.query.userId || 'unknown';
+  const defaultFunds = Number(process.env.DEFAULT_FUNDS || 100);
+  res.json({ userId, funds: defaultFunds });
+});
+
+// Account deletion (stub) – anonymise personal data
+app.delete('/users/:id', checkJwt, (req, res) => {
+  const id = req.params.id;
+  const anonymised = {
+    id,
+    name: 'deleted',
+    email: 'deleted@redacted',
+    phone: null,
+    status: 'anonymised'
+  };
+  res.json({ message: 'Account anonymised (stub)', user: anonymised });
+});
+
 // Start server only if not in test mode
 if (process.env.NODE_ENV !== 'test') {
   const server = app.listen(PORT, () => {

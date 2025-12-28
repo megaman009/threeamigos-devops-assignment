@@ -24,6 +24,14 @@ else
     COMPOSE_CMD="docker-compose"
 fi
 
+# Proactively remove stale default network that can break Podman/Docker Compose
+echo "Checking for stale compose network..."
+for CMD in docker podman; do
+    if command -v "$CMD" >/dev/null 2>&1; then
+        "$CMD" network rm threeamigos_default >/dev/null 2>&1 && echo "Removed stale network via $CMD"
+    fi
+done
+
 # Start only required services to run API tests (skip frontend)
 $COMPOSE_CMD up -d --build postgres redis user-service product-service
 if [ $? -ne 0 ]; then
@@ -70,6 +78,13 @@ fi
 # 5. Teardown
 echo "🧹 Cleaning up..."
 ${COMPOSE_CMD} down
+
+# Ensure the default network is cleaned up to avoid future label mismatches
+for CMD in docker podman; do
+    if command -v "$CMD" >/dev/null 2>&1; then
+        "$CMD" network rm threeamigos_default >/dev/null 2>&1
+    fi
+done
 
 echo -e "${GREEN}🎉 All Integration Tests Passed!${NC}"
 exit 0

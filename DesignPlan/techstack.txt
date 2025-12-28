@@ -1,0 +1,21 @@
+Frontend:
+- React.js (Products SPA, Auth/Profile SPA)
+
+Backend:
+- Node.js + Express (Product Service, User Service)
+
+Authentication:
+- Auth0 (OAuth2, OpenID Connect, JWT)
+
+Data & Storage:
+- PostgreSQL
+- Redis (caching)
+- Elasticsearch (mocked)
+
+DevOps & Deployment:
+- GitHub Actions CI/CD
+- Docker / Docker Compose
+- Environment-based configuration
+- Automated testing (Jest)
+- Azure cloud deployment
+

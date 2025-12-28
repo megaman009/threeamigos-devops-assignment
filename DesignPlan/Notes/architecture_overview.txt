@@ -1,0 +1,18 @@
+ThreeAmigos Corp – ThAmCo System
+Stage 1: System Architecture Documentation
+
+Overview:
+The ThAmCo system is designed using a container-based, microservice-oriented architecture. This approach isolates core business functions into independent containers, enabling scalability, fault tolerance, and maintainability. Each service can be developed, deployed, and scaled independently, minimizing the impact of failures.
+
+Cloud Platform:
+Microsoft Azure was selected for container hosting and deployment. Azure provides managed container services, secure networking, and native CI/CD integration, supporting enterprise-grade operations.
+
+Security & Resilience:
+- All inter-service and client-server communication occurs over HTTPS.
+- Authentication and authorisation are handled via Auth0 (OAuth2/OpenID Connect), with JWTs enforced server-side.
+- Role-based access ensures staff-only operations are protected.
+- Containers fail independently; mock services are used to isolate external dependencies.
+
+Scope:
+This Stage 1 documentation covers the Product Browsing and Search, and User Authentication/Profile Management slices, representing approximately 20% of the complete system while demonstrating inter-container communication, security, and resilience.
+

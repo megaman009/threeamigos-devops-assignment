@@ -168,4 +168,80 @@ describe('Product Service API Tests', () => {
       });
     });
   });
+
+  describe('GET /products/search', () => {
+    it('should return 400 when q missing', async () => {
+      const response = await request(app)
+        .get('/products/search')
+        .expect(400);
+
+      expect(response.body).toEqual({ error: 'Missing q parameter' });
+    });
+
+    it('should search products by name (ILIKE)', async () => {
+      clients.db.query.mockResolvedValue({
+        rows: [
+          { id: 1, name: 'Coffee Beans', stock: 42, price: 12.99 }
+        ]
+      });
+
+      const response = await request(app)
+        .get('/products/search?q=coffee')
+        .expect(200);
+
+      expect(response.body).toEqual([
+        { id: 1, name: 'Coffee Beans', stock: 42, price: 12.99 }
+      ]);
+      expect(clients.db.query).toHaveBeenCalledWith(
+        'SELECT id, name, stock, price FROM products WHERE name ILIKE $1 ORDER BY id',
+        ['%coffee%']
+      );
+    });
+  });
+
+  describe('Orders and Dispatch', () => {
+    it('should fail to create order when insufficient stock', async () => {
+      // Product exists but low stock
+      clients.db.query.mockResolvedValueOnce({ rows: [{ id: 1, name: 'Coffee Beans', stock: 0, price: 12.99 }] });
+
+      const response = await request(app)
+        .post('/orders')
+        .send({ userId: 101, productId: 1, quantity: 1 })
+        .expect(400);
+
+      expect(response.body).toEqual({ error: 'Insufficient stock' });
+    });
+
+    it('should create order when funds and stock are sufficient', async () => {
+      // Product exists and has stock
+      clients.db.query.mockResolvedValueOnce({ rows: [{ id: 1, name: 'Coffee Beans', stock: 10, price: 12.99 }] });
+
+      // Mock funds endpoint
+      global.fetch.mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue({ funds: 100 }) });
+
+      // Mock supplier availability
+      // Next DB updates: UPDATE stock, INSERT order
+      clients.db.query.mockResolvedValueOnce({});
+      clients.db.query.mockResolvedValueOnce({ rows: [{ id: 99, user_id: 101, product_id: 1, quantity: 1, total_price: '12.99', status: 'created' }] });
+
+      const response = await request(app)
+        .post('/orders')
+        .send({ userId: 101, productId: 1, quantity: 1 })
+        .expect(201);
+
+      expect(response.body).toMatchObject({ id: 99, status: 'created' });
+    });
+
+    it('should list dispatches and mark dispatched', async () => {
+      // List created orders
+      clients.db.query.mockResolvedValueOnce({ rows: [{ id: 99, status: 'created' }] });
+      const list = await request(app).get('/dispatches').expect(200);
+      expect(list.body).toEqual([{ id: 99, status: 'created' }]);
+
+      // Patch dispatch
+      clients.db.query.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 99, status: 'dispatched' }] });
+      const patched = await request(app).patch('/orders/99/dispatch').expect(200);
+      expect(patched.body).toEqual({ id: 99, status: 'dispatched' });
+    });
+  });
 });

@@ -1,0 +1,12 @@
+Connectivity Overview:
+- Products SPA → Product Service (HTTPS REST, GET requests)
+- Auth/Profile SPA → User Service (HTTPS REST, GET/POST/PATCH/DELETE)
+- Product Service → Redis (Caching, optional read/write)
+- Product Service → Supplier API (mocked HTTP)
+- User Service → Auth0 (OAuth2/OpenID Connect, JWT validation)
+
+Protocols:
+- HTTPS everywhere
+- JSON for request/response payloads
+- JWT tokens passed in Authorization headers for protected endpoints
+

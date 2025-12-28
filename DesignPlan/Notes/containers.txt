@@ -1,0 +1,41 @@
+Container: Product Service
+Purpose: Provides product catalogue browsing, filtering, and search.
+System Requirements: Product browsing, stock availability, daily updates.
+Technologies: Node.js, Express, PostgreSQL, Redis, Elasticsearch (mocked or real)
+Data Requirements: Product data from DB and supplier API (mock)
+Endpoints:
+  - GET /products
+  - GET /products/:id
+  - GET /products/search?q=
+Connectivity:
+  - Consumed by Products SPA
+  - Reads from Redis cache
+  - Supplier API mocked
+
+Container: User Service
+Purpose: Handles user registration, login, profile updates, and role-based access.
+System Requirements: Secure login, profile management, account deletion
+Technologies: Node.js, Express, PostgreSQL, Auth0
+Data Requirements: User profile data stored in DB; Auth0 provides authentication
+Endpoints:
+  - POST /users/register
+  - POST /users/login
+  - GET /users/:id/profile
+  - PATCH /users/:id/profile
+  - DELETE /users/:id
+Connectivity:
+  - Consumed by Auth/Profile SPA
+  - Auth0 for token validation
+
+Container: Products SPA (Frontend)
+Purpose: Provides public-facing product browsing interface.
+Technologies: React.js
+Connectivity:
+  - Calls Product Service endpoints over HTTPS REST
+
+Container: Auth/Profile SPA (Frontend)
+Purpose: Manages login, logout, and profile updates.
+Technologies: React.js, Auth0 SDK
+Connectivity:
+  - Calls User Service endpoints over HTTPS REST
+

@@ -1,5 +1,6 @@
 # Stage 3: Narrative Report
 
+**Student Name:** Ali Mustafa
 **Student ID:** 2110097
 **Module:** Cloud Computing DevOps (CIS3032-N)
 
@@ -51,3 +52,69 @@ I implemented a pipeline that verifies code quality before deployment:
 ## Conclusion
 
 The system successfully meets the requirements of a modern, cloud-native application. The trade-offs made (complexity vs. scalability) were managed through robust DevOps tooling and clear architectural boundaries.
+
+## Architecture Diagram
+
+```mermaid
+graph LR
+  subgraph Client
+    F[Frontend (React, port 3002)]
+  end
+  subgraph Services
+    PS[Product Service (Express, port 3000)]
+    US[User Service (Express, port 3001)]
+  end
+  subgraph Data
+    PG[(PostgreSQL)]
+    RD[(Redis Cache)]
+  end
+  subgraph External
+    AUTH0[Auth0 (OIDC)]
+  end
+
+  F -->|HTTP| PS
+  PS -->|JWT-protected /user| US
+  PS -->|SQL| PG
+  PS -->|Cache| RD
+  US -->|Verify JWT| AUTH0
+
+  PS ---|Health: /health| PS
+  US ---|Health: /health| US
+```
+
+### API Flow (Resilience + Security)
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant ProductService as Product Service
+  participant Redis
+  participant Postgres
+  participant UserService as User Service
+  participant Auth0
+
+  Client->>ProductService: GET /product-with-user
+  ProductService->>Redis: GET products
+  alt Cache hit
+    Redis-->>ProductService: products
+  else Cache miss
+    ProductService->>Postgres: SELECT products
+    Postgres-->>ProductService: products
+    ProductService->>Redis: SETEX products
+  end
+  ProductService->>UserService: GET /user (Bearer token)
+  alt User service available + valid JWT
+    UserService->>Auth0: Validate JWT
+    Auth0-->>UserService: OK
+    UserService-->>ProductService: user profile
+    ProductService-->>Client: 200 { product, user }
+  else User service unavailable/unauthorized
+    ProductService-->>Client: 200 { product, user: fallback }
+  end
+```
+
+### Ports & Environment
+
+- Product Service: port 3000 — `DATABASE_URL`, `REDIS_URL`, `USER_SERVICE_URL`
+- User Service: port 3001 — `AUTH0_AUDIENCE`, `AUTH0_ISSUER_BASE_URL`
+- Frontend: port 3002 — `REACT_APP_API_URL`

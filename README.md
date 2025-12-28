@@ -4,6 +4,15 @@
 
 This is a microservices e-commerce platform I built for my DevOps assignment. It has products, users, and a frontend, all running in Docker containers.
 
+## Assignment Scenario (ThAmCo)
+
+- Company: ThreeAmigos Corp (ThAmCo).
+- Scope (Stage 1): ~20% of the system focusing on Product Browsing/Search and User Auth/Profile.
+- Stage 2 focus: security (Auth0 + JWT), automated tests (Jest + Supertest), resilience (timeouts + fallbacks), mocked dependencies (supplier API), and DevOps (Docker Compose + CI/CD).
+- Stage 3: documentation and demo.
+- See the original design docs in [DesignPlan](DesignPlan) and the implementation notes in [NARRATIVE_REPORT.md](NARRATIVE_REPORT.md).
+   - Note: `DesignPlan/` is the Stage 1 deliverable (design). Stage 3 uses `NARRATIVE_REPORT.md`.
+
 ## What It Does
 
 - **Product Service** (port 3000): Handles products with database and caching
@@ -11,6 +20,42 @@ This is a microservices e-commerce platform I built for my DevOps assignment. It
 - **Frontend** (port 3002): React app that talks to the APIs
 - **Database**: PostgreSQL for storing data
 - **Cache**: Redis for faster performance
+
+## Design Plan (Stage 1) Summary
+
+- Goal: Show a simple microservices design for products and users.
+- Tech: React (frontend), Node.js + Express (APIs), PostgreSQL, Redis, Auth0.
+- Security: Use Auth0 and JWTs; protect user data.
+- Resilience: Services are separate; supplier API is mocked.
+- Diagrams: See design images in [DesignPlan/Architecture](DesignPlan/Architecture).
+- More details: See [DesignPlan/readme.txt](DesignPlan/readme.txt) and [DesignPlan/Notes](DesignPlan/Notes).
+
+## Scenario Coverage (What I Built)
+
+This project implements about 20% of the full system, focused on products and basic security, matching the brief.
+
+- Public (from brief):
+   - Browse products: Done via `GET /products`.
+   - Loose search: Planned in design, not implemented.
+   - Register: Not implemented.
+
+- Registered customers:
+   - Secure sign-in: Backend uses Auth0/JWT guard; full login/profile UI not implemented.
+   - Update profile: Not implemented.
+   - See stock status: Basic stock shown in products; 5‑min auto updates not implemented.
+   - See funds: Not implemented.
+   - Order + emails + history + delete account: Not implemented.
+
+- Staff:
+   - Dispatch list + mark dispatched: Not implemented.
+   - View customer profile/funds/orders: Not implemented.
+   - Delete customer (erase/anonymise personal data): Not implemented.
+
+- Product requirements:
+   - Source suppliers list + de‑duplication + cheapest price +10%: Planned in design, not implemented.
+   - Daily catalogue/price update: Mock supplier sync endpoint present; full scheduler not implemented.
+
+See design intent in [DesignPlan](DesignPlan) and technology choices in [NARRATIVE_REPORT.md](NARRATIVE_REPORT.md).
 
 ## How to Run Locally
 
@@ -53,6 +98,18 @@ I deployed this to Azure. Check `AZURE_DEPLOYMENT.md` for how I did it.
    # API endpoints
    curl http://localhost:3000/products
    curl http://localhost:3000/product-with-user
+   # Search
+   curl "http://localhost:3000/products/search?q=Coffee"
+   # Funds (mock)
+   curl "http://localhost:3001/funds?userId=101"
+   # Create order
+   curl -X POST http://localhost:3000/orders -H 'Content-Type: application/json' -d '{"userId":101, "productId":1, "quantity":1}'
+   # Order history
+   curl "http://localhost:3000/orders?userId=101"
+   # Dispatch list
+   curl http://localhost:3000/dispatches
+   # Mark dispatched
+   curl -X PATCH http://localhost:3000/orders/1/dispatch
    ```
 
 ## Services
@@ -184,4 +241,4 @@ This assignment covers:
 ---
 
 Built with Node.js, React, PostgreSQL, Redis, Docker
-For Cloud Computing DevOps class
+For Cloud Computing DevOps Assignment
