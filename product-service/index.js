@@ -107,6 +107,44 @@ app.get('/products', async (req, res) => {
 });
 
 // NEW: service-to-service call
+// Mock Supplier API (demonstrates faking external dependencies)
+const mockSupplierAPI = () => {
+  return {
+    getProducts: async () => {
+      // Simulates supplier response with delay
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return [
+        { sku: 'SUP-001', name: 'Coffee Beans', price: 10.99, stock: 50 },
+        { sku: 'SUP-002', name: 'Espresso Machine', price: 249.99, stock: 10 }
+      ];
+    }
+  };
+};
+
+// Supplier sync endpoint (demonstrates daily sync requirement)
+app.get('/sync-supplier', async (req, res) => {
+  console.log(`[${SERVICE_NAME}] /sync-supplier requested`);
+  
+  try {
+    const supplier = mockSupplierAPI();
+    const supplierProducts = await supplier.getProducts();
+    
+    console.log(`[${SERVICE_NAME}] Fetched ${supplierProducts.length} products from supplier (mock)`);
+    
+    // In production, this would update DB with supplier data + 10% markup
+    res.json({
+      status: 'success',
+      productsReceived: supplierProducts.length,
+      message: 'Supplier sync complete (mock)',
+      products: supplierProducts
+    });
+    
+  } catch (error) {
+    console.error(`[${SERVICE_NAME}] Supplier sync failed:`, error.message);
+    res.status(500).json({ error: 'Supplier sync failed' });
+  }
+});
+
 app.get('/product-with-user', async (req, res) => {
   console.log(`[${SERVICE_NAME}] /product-with-user requested`);
 
@@ -120,25 +158,47 @@ app.get('/product-with-user', async (req, res) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    console.log(`[${SERVICE_NAME}] calling user-service at ${process.env.USER_SERVICE_URL}`);
-
-    const USER_SERVICE_URL = process.env.USER_SERVICE_URL;
-    const response = await fetch(`${USER_SERVICE_URL}/user`);
-    const user = await response.json();
-
-    console.log(`[${SERVICE_NAME}] user-service responded successfully`);
+    let user = null;
+    try {
+      console.log(`[${SERVICE_NAME}] calling user-service at ${process.env.USER_SERVICE_URL}`);
+      const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3001';
+      
+      // Attempt to fetch user with timeout
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+      
+      const response = await fetch(`${USER_SERVICE_URL}/user`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      
+      if (!response.ok) {
+        throw new Error(`User service returned ${response.status}`);
+      }
+      
+      user = await response.json();
+      console.log(`[${SERVICE_NAME}] user-service responded successfully`);
+      
+    } catch (serviceError) {
+      console.warn(`[${SERVICE_NAME}] User Service call failed (Graceful Fallback): ${serviceError.message}`);
+      // RESILIENCE: Graceful degradation when user-service unavailable
+      user = { 
+        id: null, 
+        name: "Unavailable (Resilience Fallback)", 
+        role: "guest",
+        message: "User Service could not be reached or access was denied."
+      };
+    }
 
     res.json({
       product,
       user
     });
-  } catch (error) {
-    console.error(
-      `[${SERVICE_NAME}] failed to call user-service`,
-      error.message
-    );
 
-    res.status(500).json({ error: 'User service unavailable' });
+  } catch (error) {
+    // This catch block handles DB errors or critical failures
+    console.error(`[${SERVICE_NAME}] Critical error:`, error.message);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 

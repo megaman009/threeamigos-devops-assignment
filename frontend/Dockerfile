@@ -2,12 +2,13 @@
 FROM node:18-alpine
 
 WORKDIR /app
+ENV NODE_ENV=production
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install deps from lockfile for reproducibility
+RUN npm ci
 
 # Copy source code
 COPY . .

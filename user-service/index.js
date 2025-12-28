@@ -10,30 +10,58 @@ app.use((req, res, next) => {
 });
 
 
+const { auth, requiredScopes } = require('express-oauth2-jwt-bearer');
+
+// Auth0 Configuration
+const checkJwt = auth({
+  audience: process.env.AUTH0_AUDIENCE || 'https://thamco-user-api',
+  issuerBaseURL: process.env.AUTH0_ISSUER_BASE_URL || 'https://dev-placeholder.auth0.com/',
+  tokenSigningAlg: 'RS256'
+});
+
+// Middleware to parse user info from JWT (mock for now or extract from sub)
+const getUserInfo = (req, res, next) => {
+  // In a real app, we might query the DB using req.auth.payload.sub
+  req.user = {
+    auth0Id: req.auth.payload.sub,
+    roles: req.auth.payload['https://thamco/roles'] || ['customer']
+  };
+  next();
+};
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'User Service is healthy' });
 });
 
-// User endpoint
-app.get('/user', (req, res) => {
+// PROTECTED User endpoint
+app.get('/user', checkJwt, getUserInfo, (req, res) => {
+  // Mock DB lookup based on the token's subject (sub)
   res.json({
     id: 101,
-    name: 'Test User',
-    role: 'customer'
+    auth0Id: req.user.auth0Id,
+    name: 'Authorized User',
+    email: 'user@example.com',
+    role: req.user.roles[0] || 'customer',
+    message: 'This data is protected by Auth0'
   });
 });
 
-// Start server (ALWAYS LAST)
-const server = app.listen(PORT, () => {
-  console.log(`User Service running on port ${PORT}`);
-});
-
-process.on('SIGTERM', () => {
-  console.log('User Service shutting down...');
-  server.close(() => {
-    console.log('User Service closed');
-    process.exit(0);
+// Start server only if not in test mode
+if (process.env.NODE_ENV !== 'test') {
+  const server = app.listen(PORT, () => {
+    console.log(`User Service running on port ${PORT}`);
   });
-});
+
+  process.on('SIGTERM', () => {
+    console.log('User Service shutting down...');
+    server.close(() => {
+      console.log('User Service closed');
+      process.exit(0);
+    });
+  });
+}
+
+// Export app for testing
+module.exports = app;
 

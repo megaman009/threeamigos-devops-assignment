@@ -139,7 +139,7 @@ describe('Product Service API Tests', () => {
       });
     });
 
-    it('should handle user service errors', async () => {
+    it('should handle user service errors with resilience fallback', async () => {
       // Mock database query
       clients.db.query.mockResolvedValue({
         rows: [{ id: 1, name: 'Coffee Beans', stock: 42, price: 12.99 }]
@@ -150,10 +150,21 @@ describe('Product Service API Tests', () => {
 
       const response = await request(app)
         .get('/product-with-user')
-        .expect(500);
+        .expect(200);
 
-      expect(response.body).toEqual({
-        error: 'User service unavailable'
+      // Should return product with resilience fallback user
+      expect(response.body.product).toEqual({
+        id: 1,
+        name: 'Coffee Beans',
+        stock: 42,
+        price: 12.99
+      });
+      
+      expect(response.body.user).toEqual({
+        id: null,
+        name: "Unavailable (Resilience Fallback)",
+        role: "guest",
+        message: "User Service could not be reached or access was denied."
       });
     });
   });

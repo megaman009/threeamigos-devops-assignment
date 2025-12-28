@@ -65,6 +65,11 @@ jobs:
           REDIS_URL: redis://localhost:6379
           USER_SERVICE_URL: http://localhost:3001
 
+      - name: Run user-service tests
+        run: cd user-service && npm test -- --coverage --watchAll=false
+        env:
+          NODE_ENV: test
+
       - name: Build frontend
         run: cd frontend && npm run build
 
