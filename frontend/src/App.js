@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth0 } from "@auth0/auth0-react";
 import './App.css';
 
@@ -12,16 +12,7 @@ function App() {
   // API Base URL from environment (or default to localhost:3000 for local dev)
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchData();
-    } else {
-      // If not logged in, we can still fetch public products
-      fetchPublicProducts();
-    }
-  }, [isAuthenticated]);
-
-  const fetchPublicProducts = async () => {
+  const fetchPublicProducts = useCallback(async () => {
     try {
       setLoading(true);
       const productsResponse = await fetch(`${API_BASE}/products`);
@@ -33,9 +24,9 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_BASE]);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -65,7 +56,16 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_BASE, getAccessTokenSilently]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchData();
+    } else {
+      // If not logged in, we can still fetch public products
+      fetchPublicProducts();
+    }
+  }, [isAuthenticated, fetchData, fetchPublicProducts]);
 
   if (authLoading) {
     return <div className="loading"><div>Loading authentication...</div></div>;
