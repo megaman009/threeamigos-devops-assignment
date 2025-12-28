@@ -142,27 +142,77 @@ app.get('/products/search', async (req, res) => {
 
 // NEW: service-to-service call
 // Mock Supplier API (demonstrates faking external dependencies)
+// Simulates multiple suppliers with different prices for deduplication
 const mockSupplierAPI = () => {
   return {
     getProducts: async () => {
       // Simulates supplier response with delay
       await new Promise(resolve => setTimeout(resolve, 100));
       return [
-        { sku: 'SUP-001', name: 'Coffee Beans', price: 10.99, stock: 50 },
-        { sku: 'SUP-002', name: 'Espresso Machine', price: 249.99, stock: 10 }
+        // Supplier A
+        { supplier: 'SupplierA', sku: 'SUP-A-001', name: 'Coffee Beans', price: 10.99, stock: 50 },
+        { supplier: 'SupplierA', sku: 'SUP-A-002', name: 'Espresso Machine', price: 249.99, stock: 10 },
+        // Supplier B (cheaper coffee, more expensive machine)
+        { supplier: 'SupplierB', sku: 'SUP-B-001', name: 'Coffee Beans', price: 9.50, stock: 30 },
+        { supplier: 'SupplierB', sku: 'SUP-B-002', name: 'Espresso Machine', price: 279.99, stock: 5 },
+        // Supplier C (cheapest machine, expensive coffee)
+        { supplier: 'SupplierC', sku: 'SUP-C-001', name: 'Coffee Beans', price: 11.99, stock: 100 },
+        { supplier: 'SupplierC', sku: 'SUP-C-002', name: 'Espresso Machine', price: 239.99, stock: 8 }
       ];
     }
   };
 };
 
+// Deduplicates supplier products and selects cheapest price for each product
+function deduplicateAndSelectCheapest(supplierProducts) {
+  const productMap = new Map();
+  
+  for (const sp of supplierProducts) {
+    const existing = productMap.get(sp.name);
+    if (!existing || sp.price < existing.price) {
+      productMap.set(sp.name, sp);
+    }
+  }
+  
+  return Array.from(productMap.values());
+}
+
+// Email notification logger (demonstrates email requirement from brief)
+function sendEmailNotification(type, data) {
+  const timestamp = new Date().toISOString();
+  const emailLog = {
+    timestamp,
+    type, // 'order_created', 'order_dispatched', etc.
+    to: data.email || 'customer@example.com',
+    subject: data.subject || 'ThAmCo Notification',
+    body: data.body || '',
+    metadata: data.metadata || {}
+  };
+  
+  // Log to console (in production, this would send via SendGrid/AWS SES/etc)
+  console.log(`[${SERVICE_NAME}] EMAIL SENT:`, JSON.stringify(emailLog));
+  
+  // In production, append to email audit log file or send to email service
+  return emailLog;
+}
+
 // Update stock and price from supplier (cheapest +10%)
 async function updateStockFromSupplier() {
   try {
     const supplier = mockSupplierAPI();
-    const supplierProducts = await supplier.getProducts();
+    const allSupplierProducts = await supplier.getProducts();
+    
+    console.log(`[${SERVICE_NAME}] Fetched ${allSupplierProducts.length} products from ${new Set(allSupplierProducts.map(p => p.supplier)).size} suppliers`);
+    
+    // DEDUPLICATION: Select cheapest price for each product
+    const dedupedProducts = deduplicateAndSelectCheapest(allSupplierProducts);
+    console.log(`[${SERVICE_NAME}] After deduplication: ${dedupedProducts.length} unique products`);
 
-    for (const sp of supplierProducts) {
+    // Apply +10% markup and update DB
+    for (const sp of dedupedProducts) {
       const priceWithMarkup = (sp.price * 1.10).toFixed(2);
+      console.log(`[${SERVICE_NAME}] Updating ${sp.name}: cheapest=${sp.price} from ${sp.supplier}, our price=${priceWithMarkup}`);
+      
       await clients.db.query(
         `UPDATE products SET stock = $1, price = $2 WHERE name = $3`,
         [sp.stock, priceWithMarkup, sp.name]
@@ -254,10 +304,17 @@ app.post('/orders', async (req, res) => {
       [userId, productId, quantity, totalPrice, 'created']
     );
 
-    // Mock email notification
-    console.log(`[${SERVICE_NAME}] Email sent to user ${userId} for order ${orderRes.rows[0].id}`);
+    const order = orderRes.rows[0];
+    
+    // Send email notification
+    sendEmailNotification('order_created', {
+      email: `user${userId}@example.com`,
+      subject: `Order #${order.id} Confirmed`,
+      body: `Your order for ${product.name} (qty: ${quantity}) has been placed. Total: $${totalPrice}`,
+      metadata: { orderId: order.id, userId, productId, quantity, totalPrice }
+    });
 
-    res.status(201).json(orderRes.rows[0]);
+    res.status(201).json(order);
   } catch (error) {
     console.error(`[${SERVICE_NAME}] Error creating order:`, error);
     res.status(500).json({ error: 'Failed to create order' });
@@ -294,7 +351,18 @@ app.patch('/orders/:id/dispatch', async (req, res) => {
       [id]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Order not found' });
-    res.json(result.rows[0]);
+    
+    const order = result.rows[0];
+    
+    // Send dispatch notification email
+    sendEmailNotification('order_dispatched', {
+      email: `user${order.user_id}@example.com`,
+      subject: `Order #${order.id} Dispatched`,
+      body: `Your order has been dispatched and is on its way!`,
+      metadata: { orderId: order.id, userId: order.user_id, dispatchedAt: order.dispatched_at }
+    });
+    
+    res.json(order);
   } catch (error) {
     console.error(`[${SERVICE_NAME}] Error dispatching order:`, error);
     res.status(500).json({ error: 'Failed to dispatch order' });

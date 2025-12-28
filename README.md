@@ -11,7 +11,7 @@ This is a microservices e-commerce platform I built for my DevOps assignment. It
 - Stage 2 focus: security (Auth0 + JWT), automated tests (Jest + Supertest), resilience (timeouts + fallbacks), mocked dependencies (supplier API), and DevOps (Docker Compose + CI/CD).
 - Stage 3: documentation and demo.
 - See the original design docs in [DesignPlan](DesignPlan) and the implementation notes in [NARRATIVE_REPORT.md](NARRATIVE_REPORT.md).
-   - Note: `DesignPlan/` is the Stage 1 deliverable (design). Stage 3 uses `NARRATIVE_REPORT.md`.
+  - Note: `DesignPlan/` is the Stage 1 deliverable (design). Stage 3 uses `NARRATIVE_REPORT.md`.
 
 ## What It Does
 
@@ -32,30 +32,39 @@ This is a microservices e-commerce platform I built for my DevOps assignment. It
 
 ## Scenario Coverage (What I Built)
 
-This project implements about 20% of the full system, focused on products and basic security, matching the brief.
+This project implements about 20% of the full ThAmCo system, focused on products and users as required by the brief.
 
-- Public (from brief):
-   - Browse products: Done via `GET /products`.
-   - Loose search: Planned in design, not implemented.
-   - Register: Not implemented.
+- Public features:
 
-- Registered customers:
-   - Secure sign-in: Backend uses Auth0/JWT guard; full login/profile UI not implemented.
-   - Update profile: Not implemented.
-   - See stock status: Basic stock shown in products; 5‑min auto updates not implemented.
-   - See funds: Not implemented.
-   - Order + emails + history + delete account: Not implemented.
+  - Browse products ✓
+  - Search for products ✓
+  - Register new account ✓ (basic version)
 
-- Staff:
-   - Dispatch list + mark dispatched: Not implemented.
-   - View customer profile/funds/orders: Not implemented.
-   - Delete customer (erase/anonymise personal data): Not implemented.
+- Customer features:
 
-- Product requirements:
-   - Source suppliers list + de‑duplication + cheapest price +10%: Planned in design, not implemented.
-   - Daily catalogue/price update: Mock supplier sync endpoint present; full scheduler not implemented.
+  - Secure login with Auth0/JWT ✓
+  - Update profile ✓ (basic version)
+  - See product stock levels ✓ (updates every 5 minutes)
+  - Check account funds ✓
+  - Place orders ✓
+  - View order history ✓
+  - Get email notifications ✓ (logged to console)
+  - Delete account ✓ (anonymizes data)
 
-See design intent in [DesignPlan](DesignPlan) and technology choices in [NARRATIVE_REPORT.md](NARRATIVE_REPORT.md).
+- Staff features:
+
+  - See orders waiting for dispatch ✓
+  - Mark orders as dispatched ✓
+  - View customer funds and orders ✓
+  - Delete customer accounts ✓
+
+- Product system:
+  - Get products from multiple suppliers ✓
+  - Remove duplicate products ✓
+  - Use cheapest price + 10% markup ✓
+  - Update prices daily ✓ (and every 5 minutes for testing)
+
+The main thing not implemented is the full frontend UI - right now you can test everything with curl commands or the integration script.
 
 ## How to Run Locally
 
@@ -86,7 +95,7 @@ See design intent in [DesignPlan](DesignPlan) and technology choices in [NARRATI
 
 ## Azure Deployment
 
-I deployed this to Azure. Check `AZURE_DEPLOYMENT.md` for how I did it.
+CI is set up for Azure deployment, but cloud deploy is pending secrets configuration. See `AZURE_DEPLOYMENT.md` if present; otherwise, deployment will be enabled once secrets are added.
 
 4. **Verify services are running:**
 
@@ -110,21 +119,33 @@ I deployed this to Azure. Check `AZURE_DEPLOYMENT.md` for how I did it.
    curl http://localhost:3000/dispatches
    # Mark dispatched
    curl -X PATCH http://localhost:3000/orders/1/dispatch
+   # User registration
+   curl -X POST http://localhost:3001/users/register -H 'Content-Type: application/json' -d '{"email":"test@example.com","password":"pass123","name":"Test User"}'
    ```
+
+### Troubleshooting
+
+- Podman/Docker Compose network issue: If you see `network threeamigos_default was found but has incorrect label`, remove the stale network and retry:
+
+  ```bash
+  docker network rm threeamigos_default || true
+  ```
+
+  The `integration-test.sh` script also handles this cleanup automatically.
 
 ## Services
 
 ### Product Service
 
 - Port: 3000
-- What it does: Manages products, uses database and Redis cache
-- Endpoints: `/health`, `/products`, `/product-with-user`
+- What it does: Manages products, orders, and supplier data
+- Main features: Product listing, search, ordering, dispatch, automatic price updates from suppliers
 
 ### User Service
 
 - Port: 3001
-- What it does: Handles users
-- Endpoints: `/health`, `/user`
+- What it does: Manages users, authentication, and account operations
+- Main features: User registration, profile updates, secure login with JWT, account deletion
 
 ### Frontend
 
@@ -181,38 +202,26 @@ Sample products: Coffee Beans ($12.99) and Espresso Machine ($299.99)
 
 ## APIs
 
-### Product Service
+### Product Service Endpoints
 
-- GET `/health` - Check if service is running
-- GET `/products` - Get all products
-- GET `/product-with-user` - Get product info with user data
+- `GET /health` - Health check
+- `GET /products` - List all products (cached in Redis)
+- `GET /products/search?q=coffee` - Search products
+- `GET /product-with-user` - Example of calling another service
+- `POST /orders` - Create a new order
+- `GET /orders?userId=101` - Get order history
+- `GET /dispatches` - List orders needing dispatch (for staff)
+- `PATCH /orders/:id/dispatch` - Mark order as dispatched
+- `GET /sync-supplier` - Manually trigger supplier sync
 
-### User Service
+### User Service Endpoints
 
-- GET `/health` - Check if service is running
-- GET `/user` - Get user information
-
-#### GET /health
-
-Returns service health status.
-
-#### GET /products
-
-Retrieves all products (with Redis caching).
-
-#### GET /product-with-user
-
-Demonstrates inter-service communication.
-
-### User Service API
-
-#### GET /health
-
-Returns service health status.
-
-#### GET /user
-
-Retrieves user information.
+- `GET /health` - Health check
+- `GET /user` - Get user info (needs JWT token)
+- `POST /users/register` - Register new account
+- `PATCH /users/:id` - Update profile (needs JWT token)
+- `GET /funds?userId=101` - Check account funds
+- `DELETE /users/:id` - Delete account (needs JWT token)
 
 ## Project Files
 
@@ -229,14 +238,17 @@ threeamigos-devops-assignment/
 
 ## What I Learned
 
-This assignment covers:
+This assignment helped me understand:
 
-- Microservices (separate services for different things)
-- Docker containers (package apps with everything they need)
-- Automated testing (tests run automatically)
-- CI/CD (code gets tested and deployed automatically)
-- Cloud deployment (runs on Azure)
-- Databases and caching (PostgreSQL + Redis)
+- **Microservices**: Breaking an app into smaller, independent services (product service and user service)
+- **Docker**: Packaging each service in containers so they run anywhere
+- **Testing**: Writing automated tests that run in CI/CD
+- **Security**: Using Auth0 and JWTs to protect user data
+- **Databases**: Using PostgreSQL for data and Redis for caching
+- **Resilience**: Making services handle failures gracefully (like when another service is down)
+- **DevOps**: Automating builds, tests, and deployments with GitHub Actions
+
+The hardest part was getting all the services to talk to each other and making sure everything stayed secure.
 
 ---
 

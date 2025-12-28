@@ -97,6 +97,52 @@ describe('User Service API Tests', () => {
     });
   });
 
+  describe('POST /users/register', () => {
+    it('should register a new user', async () => {
+      const response = await request(app)
+        .post('/users/register')
+        .send({ email: 'newuser@example.com', password: 'securepass123', name: 'New User' })
+        .expect(201);
+      expect(response.body).toMatchObject({
+        email: 'newuser@example.com',
+        name: 'New User',
+        role: 'customer'
+      });
+      expect(response.body.id).toBeDefined();
+    });
+
+    it('should reject registration without email', async () => {
+      const response = await request(app)
+        .post('/users/register')
+        .send({ password: 'securepass123' })
+        .expect(400);
+      expect(response.body).toEqual({ error: 'Email and password required' });
+    });
+  });
+
+  describe('PATCH /users/:id', () => {
+    it('should update user profile when authorized', async () => {
+      const response = await request(app)
+        .patch('/users/101')
+        .set('Authorization', 'Bearer valid-token')
+        .send({ name: 'Updated Name', email: 'updated@example.com' })
+        .expect(200);
+      expect(response.body).toMatchObject({
+        id: '101',
+        name: 'Updated Name',
+        email: 'updated@example.com'
+      });
+    });
+
+    it('should reject when not authorized', async () => {
+      const response = await request(app)
+        .patch('/users/101')
+        .send({ name: 'Hacker' })
+        .expect(401);
+      expect(response.body).toEqual({ error: 'No authorization token was found' });
+    });
+  });
+
   describe('DELETE /users/:id', () => {
     it('should anonymise user when authorized', async () => {
       const response = await request(app)

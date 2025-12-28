@@ -4,6 +4,8 @@ const PORT = 3001;
 
 const SERVICE_NAME = 'user-service';
 
+app.use(express.json());
+
 app.use((req, res, next) => {
   console.log(`[${SERVICE_NAME}] ${req.method} ${req.path}`);
   next();
@@ -54,6 +56,47 @@ app.get('/funds', (req, res) => {
   res.json({ userId, funds: defaultFunds });
 });
 
+// User registration (public endpoint)
+app.post('/users/register', (req, res) => {
+  const { email, password, name } = req.body || {};
+  
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password required' });
+  }
+  
+  // In production: hash password, save to DB, create Auth0 account
+  const newUser = {
+    id: Math.floor(Math.random() * 100000) + 1000,
+    email,
+    name: name || 'New User',
+    role: 'customer',
+    createdAt: new Date().toISOString(),
+    message: 'Registration successful (stub - Auth0 integration needed for production)'
+  };
+  
+  console.log(`[${SERVICE_NAME}] User registered:`, newUser.email);
+  res.status(201).json(newUser);
+});
+
+// User profile update (protected endpoint)
+app.patch('/users/:id', checkJwt, (req, res) => {
+  const id = req.params.id;
+  const { name, email, phone } = req.body || {};
+  
+  // In production: validate and update DB
+  const updated = {
+    id,
+    name: name || 'Updated User',
+    email: email || 'updated@example.com',
+    phone: phone || null,
+    updatedAt: new Date().toISOString(),
+    message: 'Profile updated successfully (stub)'
+  };
+  
+  console.log(`[${SERVICE_NAME}] User profile updated:`, id);
+  res.json(updated);
+});
+
 // Account deletion (stub) – anonymise personal data
 app.delete('/users/:id', checkJwt, (req, res) => {
   const id = req.params.id;
@@ -64,6 +107,7 @@ app.delete('/users/:id', checkJwt, (req, res) => {
     phone: null,
     status: 'anonymised'
   };
+  console.log(`[${SERVICE_NAME}] User account anonymised:`, id);
   res.json({ message: 'Account anonymised (stub)', user: anonymised });
 });
 
