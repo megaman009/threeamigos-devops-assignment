@@ -43,6 +43,106 @@ const checkJwt = auth({
   tokenSigningAlg: 'RS256'
 });
 
+const getAuth0Domain = () => {
+  if (process.env.AUTH0_DOMAIN) return process.env.AUTH0_DOMAIN;
+
+  const issuer = process.env.AUTH0_ISSUER_BASE_URL;
+  if (!issuer) return null;
+  try {
+    const url = new URL(issuer);
+    return url.host;
+  } catch {
+    return null;
+  }
+};
+
+const getAuth0MgmtConfig = () => {
+  return {
+    domain: getAuth0Domain(),
+    clientId: process.env.AUTH0_MGMT_CLIENT_ID || null,
+    clientSecret: process.env.AUTH0_MGMT_CLIENT_SECRET || null
+  };
+};
+
+let auth0MgmtTokenCache = null;
+const getAuth0MgmtToken = async () => {
+  const { domain, clientId, clientSecret } = getAuth0MgmtConfig();
+  if (!domain || !clientId || !clientSecret) {
+    const err = new Error('Auth0 Management API not configured');
+    err.code = 'AUTH0_MGMT_NOT_CONFIGURED';
+    throw err;
+  }
+
+  const now = Date.now();
+  if (auth0MgmtTokenCache && auth0MgmtTokenCache.expiresAtMs > now + 30_000) {
+    return auth0MgmtTokenCache.accessToken;
+  }
+
+  if (typeof fetch !== 'function') {
+    throw new Error('Global fetch is not available in this Node runtime');
+  }
+
+  const tokenResp = await fetch(`https://${domain}/oauth/token`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret,
+      audience: `https://${domain}/api/v2/`
+    })
+  });
+
+  if (!tokenResp.ok) {
+    const text = await tokenResp.text().catch(() => '');
+    throw new Error(`Failed to obtain Auth0 management token (${tokenResp.status}): ${text || tokenResp.statusText}`);
+  }
+
+  const data = await tokenResp.json();
+  const accessToken = data?.access_token;
+  const expiresInSec = Number(data?.expires_in || 0);
+
+  if (!accessToken || !expiresInSec) {
+    throw new Error('Auth0 token response missing access_token/expires_in');
+  }
+
+  auth0MgmtTokenCache = {
+    accessToken,
+    expiresAtMs: now + expiresInSec * 1000
+  };
+
+  return accessToken;
+};
+
+const deleteAuth0User = async (auth0UserId) => {
+  const { domain } = getAuth0MgmtConfig();
+  const mgmtToken = await getAuth0MgmtToken();
+
+  const resp = await fetch(`https://${domain}/api/v2/users/${encodeURIComponent(auth0UserId)}`, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${mgmtToken}`
+    }
+  });
+
+  if (resp.status === 204) {
+    return { deleted: true };
+  }
+
+  if (resp.status === 404) {
+    return { deleted: false, notFound: true };
+  }
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`Auth0 delete user failed (${resp.status}): ${text || resp.statusText}`);
+  }
+
+  return { deleted: true };
+};
+
 // Middleware to parse user info from JWT (mock for now or extract from sub)
 const getUserInfo = (req, res, next) => {
   // In a real app, we might query the DB using req.auth.payload.sub
@@ -51,6 +151,17 @@ const getUserInfo = (req, res, next) => {
     roles: req.auth.payload['https://thamco/roles'] || ['customer']
   };
   next();
+};
+
+const anonymiseUser = ({ id, auth0Id }) => {
+  return {
+    id,
+    auth0Id: auth0Id || null,
+    name: 'deleted',
+    email: 'deleted@redacted',
+    phone: null,
+    status: 'anonymised'
+  };
 };
 
 // Health check
@@ -69,6 +180,38 @@ app.get('/user', checkJwt, getUserInfo, (req, res) => {
     role: req.user.roles[0] || 'customer',
     message: 'This data is protected by Auth0'
   });
+});
+
+// Delete the currently authenticated user:
+// - Deletes the Auth0 user via the Management API
+// - Also anonymises local data (stub)
+app.delete('/me', checkJwt, getUserInfo, async (req, res) => {
+  try {
+    const auth0Id = req.user?.auth0Id;
+    if (!auth0Id) {
+      return res.status(400).json({ error: 'Missing user identity (sub)' });
+    }
+
+    const auth0Delete = await deleteAuth0User(auth0Id);
+
+    const anonymised = anonymiseUser({
+      id: 101,
+      auth0Id
+    });
+
+    console.log(`[${SERVICE_NAME}] User deleted from Auth0 and anonymised:`, auth0Id);
+    return res.json({
+      message: 'Account deleted from Auth0 and anonymised (stub)',
+      auth0: auth0Delete,
+      user: anonymised
+    });
+  } catch (err) {
+    if (err?.code === 'AUTH0_MGMT_NOT_CONFIGURED') {
+      return res.status(501).json({ error: 'Auth0 Management API is not configured on this service' });
+    }
+    console.error(`[${SERVICE_NAME}] Failed to delete /me:`, err);
+    return res.status(502).json({ error: 'Failed to delete account' });
+  }
 });
 
 // Public funds endpoint (mock) for inter-service checks
@@ -122,13 +265,7 @@ app.patch('/users/:id', checkJwt, (req, res) => {
 // Account deletion (stub) – anonymise personal data
 app.delete('/users/:id', checkJwt, (req, res) => {
   const id = req.params.id;
-  const anonymised = {
-    id,
-    name: 'deleted',
-    email: 'deleted@redacted',
-    phone: null,
-    status: 'anonymised'
-  };
+  const anonymised = anonymiseUser({ id, auth0Id: null });
   console.log(`[${SERVICE_NAME}] User account anonymised:`, id);
   res.json({ message: 'Account anonymised (stub)', user: anonymised });
 });

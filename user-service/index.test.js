@@ -27,6 +27,15 @@ jest.mock('express-oauth2-jwt-bearer', () => ({
 const app = require('./index');
 
 describe('User Service API Tests', () => {
+  beforeEach(() => {
+    delete process.env.AUTH0_DOMAIN;
+    delete process.env.AUTH0_MGMT_CLIENT_ID;
+    delete process.env.AUTH0_MGMT_CLIENT_SECRET;
+    if (global.fetch && global.fetch.mockRestore) {
+      global.fetch.mockRestore();
+    }
+  });
+
   describe('GET /health', () => {
     it('should return healthy status', async () => {
       const response = await request(app)
@@ -157,6 +166,55 @@ describe('User Service API Tests', () => {
         .delete('/users/101')
         .expect(401);
       expect(response.body).toEqual({ error: 'No authorization token was found' });
+    });
+  });
+
+  describe('DELETE /me', () => {
+    it('should return 501 if Auth0 Management API is not configured', async () => {
+      const response = await request(app)
+        .delete('/me')
+        .set('Authorization', 'Bearer valid-token')
+        .expect(501);
+
+      expect(response.body).toEqual({
+        error: 'Auth0 Management API is not configured on this service'
+      });
+    });
+
+    it('should delete Auth0 user and anonymise when configured', async () => {
+      process.env.AUTH0_DOMAIN = 'dev-example.us.auth0.com';
+      process.env.AUTH0_MGMT_CLIENT_ID = 'client-id';
+      process.env.AUTH0_MGMT_CLIENT_SECRET = 'client-secret';
+
+      global.fetch = jest
+        .fn()
+        // 1) oauth/token
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ access_token: 'mgmt-token', expires_in: 3600 })
+        })
+        // 2) delete user
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 204,
+          text: async () => ''
+        });
+
+      const response = await request(app)
+        .delete('/me')
+        .set('Authorization', 'Bearer valid-token')
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        message: 'Account deleted from Auth0 and anonymised (stub)',
+        auth0: { deleted: true },
+        user: { id: 101, auth0Id: 'auth0|123456789', status: 'anonymised' }
+      });
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(global.fetch.mock.calls[0][0]).toBe('https://dev-example.us.auth0.com/oauth/token');
+      expect(global.fetch.mock.calls[1][0]).toBe('https://dev-example.us.auth0.com/api/v2/users/auth0%7C123456789');
     });
   });
 });

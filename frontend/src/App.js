@@ -210,6 +210,39 @@ function App() {
     }
   }, [PRODUCT_API_BASE, USER_API_BASE, getAccessTokenSilently, dedupeProductsById]);
 
+  const deleteAccount = async () => {
+    if (!isAuthenticated) return;
+
+    const ok = window.confirm('This will delete your Auth0 account and anonymise your data in the app. Continue?');
+    if (!ok) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const token = await getAccessTokenSilently();
+      const resp = await fetch(`${USER_API_BASE}/me`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        throw new Error(text || 'Delete failed');
+      }
+
+      setOrderSuccess('Account deleted. Logging out...');
+      setTimeout(() => setOrderSuccess(null), 4000);
+      logout({ logoutParams: { returnTo: window.location.origin } });
+    } catch (err) {
+      setError(`Delete account failed: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
@@ -358,10 +391,20 @@ function App() {
               <section className="user-section">
                 <h2>👤 Your Profile (Secure)</h2>
                 <div className="user-card">
-                  <h3>{user.name}</h3>
-                  <p>Email: {user.email}</p>
+                  <h3>{auth0User?.name || user.name}</h3>
+                  <p>Email: {auth0User?.email || user.email}</p>
                   <p>Role: {user.role}</p>
                   <small>{user.message}</small>
+
+                  <div style={{ marginTop: '12px' }}>
+                    <button
+                      className="logout-btn"
+                      onClick={deleteAccount}
+                      disabled={loading}
+                    >
+                      Delete Account
+                    </button>
+                  </div>
                 </div>
               </section>
             )}
