@@ -8,8 +8,8 @@ E-commerce system for ThreeAmigos Corporation (ThAmCo) - a startup that resells 
 ## Live Demo (Azure)
 
 - Frontend: https://frontend.happydune-2f7f3502.uaenorth.azurecontainerapps.io
-- Product API: https://product-service.happydune-2f7f3502.uaenorth.azurecontainerapps.io
-- User API: https://user-service.happydune-2f7f3502.uaenorth.azurecontainerapps.io
+- Product API (health): https://product-service.happydune-2f7f3502.uaenorth.azurecontainerapps.io/health
+- User API (health): https://user-service.happydune-2f7f3502.uaenorth.azurecontainerapps.io/health
 
 Azure deployment notes and scripts: [AZURE_DEPLOYMENT.md](AZURE_DEPLOYMENT.md)
 
