@@ -118,13 +118,42 @@ The GitHub Actions workflow will automatically:
 - Deploy to Azure Container Apps
 - Provide live URLs
 
+## GitHub Actions Deploy Stage (3rd Pipeline Stage)
+
+The repository includes a third pipeline stage (`deploy`) in [./.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml). It is gated and will only run when the required GitHub secrets are configured.
+
+### Required GitHub Secrets
+
+Set these in **GitHub → Settings → Secrets and variables → Actions → New repository secret**:
+
+- `AZURE_CLIENT_ID`: Client ID of the Azure identity used by GitHub OIDC
+- `AZURE_TENANT_ID`: Azure tenant ID
+- `AZURE_SUBSCRIPTION_ID`: Azure subscription ID
+- `AZURE_RESOURCE_GROUP`: resource group name (example: `threeamigos-rg`)
+- `ACR_NAME`: Azure Container Registry name (example: `threeamigosacr`)
+
+The frontend container build also requires build-time API URLs:
+
+- `REACT_APP_PRODUCT_API_URL`: public product API base URL (example: `https://product-service.<suffix>.azurecontainerapps.io`)
+- `REACT_APP_USER_API_URL`: public user API base URL (example: `https://user-service.<suffix>.azurecontainerapps.io`)
+- `REACT_APP_DEMO_USER_ID` (optional): demo user id (example: `1`)
+
+### Azure authentication (OIDC)
+
+This repo is set up to deploy using **GitHub Actions OIDC** (no long-lived `AZURE_CREDENTIALS` secret). The Azure identity used by GitHub Actions must:
+
+- Have a **federated credential** for the GitHub repo/branch
+- Have RBAC:
+  - **Contributor** on the resource group
+  - **AcrPush** on the container registry
+
 ## 🎯 Expected Result
 
 After deployment, you'll have:
 
 - **Frontend**: https://frontend-xyz.azurecontainerapps.io
 - **Product API**: https://product-service-xyz.azurecontainerapps.io
-- **User API**: Internal only
+- **User API**: https://user-service-xyz.azurecontainerapps.io
 
 ## 💰 Cost Information - Azure for Students
 

@@ -103,39 +103,69 @@ jobs:
         with:
           sarif_file: "trivy-results.sarif"
 
-  # Deploy job is skipped until Azure credentials are configured
-  # To enable: Set AZURE_CREDENTIALS secret in GitHub with service principal credentials
-  # See setup-azure.sh for credential generation
-  # deploy:
-  #   runs-on: ubuntu-latest
-  #   needs: [test, security-scan]
-  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Login to Azure
-  #       uses: azure/login@v2
-  #       with:
-  #         creds: ${{ secrets.AZURE_CREDENTIALS }}
-  #
-  #     - name: Login to Azure Container Registry
-  #       run: az acr login --name ${{ secrets.ACR_NAME }}
-  #
-  #     - name: Build and push Docker images
-  #       run: |
-  #         docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }} ./product-service
-  #         docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }} ./user-service
-  #         docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }} ./frontend
-  #
-  #         docker tag ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/product-service:latest
-  #         docker tag ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/user-service:latest
-  #         docker tag ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }} ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
-  #
-  #         docker push ${{ secrets.ACR_NAME }}.azurecr.io/product-service:${{ github.sha }}
-  #         docker push ${{ secrets.ACR_NAME }}.azurecr.io/user-service:${{ github.sha }}
-  #         docker push ${{ secrets.ACR_NAME }}.azurecr.io/frontend:${{ github.sha }}
-  #         docker push ${{ secrets.ACR_NAME }}.azurecr.io/product-service:latest
-  #         docker push ${{ secrets.ACR_NAME }}.azurecr.io/user-service:latest
-  #         docker push ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_SUBSCRIPTION_ID != '' && secrets.ACR_NAME != '' && secrets.AZURE_RESOURCE_GROUP != ''
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to Azure Container Registry
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Build and push images (SHA + latest)
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          TAG: ${{ github.sha }}
+          REACT_APP_PRODUCT_API_URL: ${{ secrets.REACT_APP_PRODUCT_API_URL }}
+          REACT_APP_USER_API_URL: ${{ secrets.REACT_APP_USER_API_URL }}
+          REACT_APP_DEMO_USER_ID: ${{ secrets.REACT_APP_DEMO_USER_ID }}
+        run: |
+          set -euo pipefail
+          ACR_SERVER="${ACR_NAME}.azurecr.io"
+
+          docker build -t "$ACR_SERVER/product-service:$TAG" ./product-service
+          docker build -t "$ACR_SERVER/user-service:$TAG" ./user-service
+          docker build \
+            --build-arg REACT_APP_PRODUCT_API_URL="$REACT_APP_PRODUCT_API_URL" \
+            --build-arg REACT_APP_USER_API_URL="$REACT_APP_USER_API_URL" \
+            --build-arg REACT_APP_DEMO_USER_ID="$REACT_APP_DEMO_USER_ID" \
+            -t "$ACR_SERVER/frontend:$TAG" \
+            ./frontend
+
+          docker tag "$ACR_SERVER/product-service:$TAG" "$ACR_SERVER/product-service:latest"
+          docker tag "$ACR_SERVER/user-service:$TAG" "$ACR_SERVER/user-service:latest"
+          docker tag "$ACR_SERVER/frontend:$TAG" "$ACR_SERVER/frontend:latest"
+
+          docker push "$ACR_SERVER/product-service:$TAG"
+          docker push "$ACR_SERVER/user-service:$TAG"
+          docker push "$ACR_SERVER/frontend:$TAG"
+          docker push "$ACR_SERVER/product-service:latest"
+          docker push "$ACR_SERVER/user-service:latest"
+          docker push "$ACR_SERVER/frontend:latest"
+
+      - name: Deploy to Azure Container Apps
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          RG: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ACR_SERVER="${ACR_NAME}.azurecr.io"
+
+          az containerapp update --only-show-errors -g "$RG" -n product-service --image "$ACR_SERVER/product-service:$TAG" -o none
+          az containerapp update --only-show-errors -g "$RG" -n user-service --image "$ACR_SERVER/user-service:$TAG" -o none
+          az containerapp update --only-show-errors -g "$RG" -n frontend --image "$ACR_SERVER/frontend:$TAG" -o none

@@ -5,6 +5,14 @@
 
 E-commerce system for ThreeAmigos Corporation (ThAmCo) - a startup that resells products online.
 
+## Live Demo (Azure)
+
+- Frontend: https://frontend.happydune-2f7f3502.uaenorth.azurecontainerapps.io
+- Product API: https://product-service.happydune-2f7f3502.uaenorth.azurecontainerapps.io
+- User API: https://user-service.happydune-2f7f3502.uaenorth.azurecontainerapps.io
+
+Azure deployment notes and scripts: [AZURE_DEPLOYMENT.md](AZURE_DEPLOYMENT.md)
+
 ## What It Does
 
 - Browse and search products
@@ -36,6 +44,14 @@ Open http://localhost:3002
 - Docker containers
 - GitHub Actions CI/CD
 
+## CI/CD Pipeline
+
+GitHub Actions runs three jobs in the CI/CD workflow:
+
+- `test`: installs dependencies, runs unit tests, builds the frontend, builds Docker images
+- `security-scan`: Trivy scan + SARIF upload to GitHub Security
+- `deploy` (optional): deploys to Azure Container Apps when GitHub secrets are configured
+
 ## Tests
 
 ```bash
@@ -48,6 +64,7 @@ npm test --prefix user-service
 ## What I Built for ThAmCo
 
 **Features:**
+
 - Product browsing and search
 - Shopping cart (respects stock limits)
 - Secure checkout with Auth0
@@ -55,8 +72,9 @@ npm test --prefix user-service
 - Redis caching for speed
 
 **What's not built** (out of scope):
+
 - Payment processing
-- Admin dashboard  
+- Admin dashboard
 - Email notifications
 
 This implements ~20% of a full system to demonstrate microservices and DevOps concepts.
@@ -71,4 +89,4 @@ This implements ~20% of a full system to demonstrate microservices and DevOps co
 
 ---
 
-*Assignment for Cloud Computing & DevOps module, demonstrating microservices architecture, containerization, and secure authentication.*
+_Assignment for Cloud Computing & DevOps module, demonstrating microservices architecture, containerization, and secure authentication._
