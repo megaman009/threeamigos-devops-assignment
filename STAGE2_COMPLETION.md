@@ -1,312 +1,99 @@
-# Stage 2 Implementation - What I Built
+# Stage 2 - What I Built
 
-**Student:** Ali Mustafa (2110097)  
-**Module:** Cloud Computing DevOps (CIS3032-N)
+**Student:** Ali Mustafa (2110097)
 
-This document explains what I implemented for Stage 2 of the ThAmCo assignment.
+This is what I implemented for Stage 2 of the assignment.
 
-## What I Built (About 20% of the Full System)
+## What's Included (~20% of Full System)
 
-I focused on the Product Browsing and User Authentication parts of ThAmCo, which covers:
-
-- Browsing and searching products (public)
-- User registration and login (Auth0)
-- Viewing stock levels (updates every 5 minutes)
-- Basic ordering functionality
-- Mock supplier API integration
+I focused on:
+- Product browsing and search
+- User authentication (Auth0)
+- Shopping cart with stock limits
+- Basic ordering
+- Microservices architecture
 
 ## 1. Automated Testing ✓
 
-I wrote automated tests using Jest for both services:
+**Unit Tests:**
+- 13 tests for Product Service
+- 12 tests for User Service
+- All passing
 
-- Product Service: 13 tests - all passing
-- User Service: 12 tests - all passing
+**CI/CD:**
+- GitHub Actions runs tests automatically on every push
+- Trivy security scanning
 
-The tests check things like product listing, search, health checks, and API endpoints. They run automatically whenever I push code to GitHub.
+```bash
+npm test --prefix product-service
+npm test --prefix user-service
+```
 
 ## 2. Configuration Management ✓
 
-I set up different config files for different environments:
+Environment files for different stages:
+- `.env.development` - local Docker
+- `.env.test` - automated tests
+- `.env.production` - Azure deployment
 
-- `.env.development` - for local testing
-- `.env.test` - for running automated tests
-- `.env.production` - for Azure deployment
-
-This lets me test locally with Docker Compose and then deploy to Azure without changing any code.
+Same code, different configs = no changes needed when deploying.
 
 ## 3. Security ✓
 
-I implemented security in a few ways:
+- **Auth0 OAuth2** - no password storage, industry standard
+- **JWT tokens** - secure API access
+- **Helmet** - security headers
+- **CORS** - only my frontend can call APIs
+- **Rate limiting** - 100 requests per 15 minutes
 
-- **Auth0 Login:** Users log in with Auth0 instead of me storing passwords (safer)
-- **JWT Tokens:** Protected endpoints check for valid tokens
-- **CORS:** Only my frontend can call the APIs
-- **Rate Limiting:** Stops people from spamming requests (100 per 15 minutes)
-- **Helmet:** Adds security headers to prevent common attacks
+## 4. Resilience ✓
 
-## 4. Resilience (Handling Failures) ✓
+System handles failures gracefully:
 
-The system can handle problems without crashing:
+- **Timeouts** - 5 second limit on service calls
+- **Fallback data** - if User Service is down, Product Service still works
+- **Health checks** - `/health` endpoints for monitoring
+- **Graceful shutdown** - closes connections properly
 
-- **Timeouts:** If a service doesn't respond in 5 seconds, it moves on
-- **Fallback Data:** If the User Service is down, Product Service still works (returns "Unavailable" for user data)
-- **Graceful Shutdown:** Services close database connections properly when stopping
-- **Health Checks:** Each service has a `/health` endpoint so Docker knows if it's working
-- **Security Headers:** Helmet middleware for HTTP security headers
-- **CORS Protection:** Configured CORS with specific origins
-- **Rate Limiting:** Express-rate-limit to prevent abuse (100 req/15min)
-- **Input Validation:** Request validation on all endpoints
-
-**Code Changes:**
-
+Example:
 ```javascript
-// Product Service & User Service
-app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGIN, credentials: true }));
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
-```
-
-**Evidence:**
-
-- Auth0 JWT verification in user-service endpoints
-- Security middleware in both services
-- Protected endpoints require valid JWT tokens
-
----
-
-### 4. Resilience to Failures ✓
-
-**Implemented:**
-
-- **Timeout Handling:** 5-second timeouts on inter-service calls
-- **Graceful Degradation:** Fallback responses when services unavailable
-- **Circuit Breaker Pattern:** Try-catch with fallback data
-- **Health Checks:** `/health` endpoints for monitoring
-- **Graceful Shutdown:** SIGTERM handlers close connections cleanly
-
-**Code Example:**
-
-```javascript
-// From product-service - Resilient inter-service call
-const controller = new AbortController();
-const timeout = setTimeout(() => controller.abort(), 5000);
 try {
-  const response = await fetch(USER_SERVICE_URL, { signal: controller.signal });
-  clearTimeout(timeout);
-  // ... process response
+  const response = await fetch(userService, { timeout: 5000 });
 } catch (error) {
-  // Graceful fallback
-  user = { id: null, name: "Unavailable (Resilience Fallback)", ... };
+  user = { name: "Unavailable (fallback)" }; // Keep working!
 }
 ```
 
-**Evidence:**
+## 5. Mock Interfaces ✓
 
-- Timeout implementation in `/product-with-user` endpoint
-- Graceful shutdown handlers in both services
-- Service continues functioning when dependencies fail
+- **Supplier API** - simulates external suppliers with different prices
+- **Email service** - logs order notifications
+- **User funds** - mock account balance
 
----
+## 6. DevOps Workflow ✓
 
-### 5. Fake Interfaces (Mocked Dependencies) ✓
+- Git version control
+- GitHub Actions CI/CD pipeline
+- Automated testing and security scanning
+- Docker containerization
+- Ready for Azure deployment
 
-**Implemented:**
+## What Works
 
-- **Mock Supplier API:** Simulates external supplier system
-  - Multiple suppliers with different prices
-  - Product deduplication (cheapest price selection)
-  - Stock availability checks
-  - +10% markup calculation
-- **Mock Email Service:** Logs email notifications (order created/dispatched)
-- **Mock User Funds:** Public endpoint simulating account balance
+✅ Browse products without login
+✅ Search products
+✅ Auth0 login
+✅ Shopping cart (respects stock)
+✅ Place orders
+✅ Services recover from failures
+✅ All tests pass
+✅ Security headers and rate limiting
 
-**Evidence:**
+## Out of Scope
 
-- `mockSupplierAPI()` function in product-service
-- `sendEmailNotification()` function logs emails
-- `/funds` endpoint returns mock balance data
-- Supplier sync demonstrates daily catalogue update requirement
+❌ Payment processing
+❌ Admin dashboard
+❌ Email notifications (just logged)
+❌ Full inventory management
 
----
-
-### 6. DevOps Workflow ✓
-
-**Implemented:**
-
-- **Version Control:** Git with meaningful commits
-- **CI/CD Pipeline:** GitHub Actions workflow
-  - Automated testing on every push/PR
-  - Security scanning (Trivy)
-  - Docker image builds
-  - Validation of docker-compose
-  - Ready for Azure deployment (commented out until credentials added)
-
-**Pipeline Stages:**
-
-1. **Test Job:**
-   - Spins up PostgreSQL & Redis services
-   - Installs dependencies
-   - Runs unit tests with coverage
-   - Builds Docker images
-2. **Security Scan Job:**
-   - Runs Trivy vulnerability scanner
-   - Uploads results to GitHub Security tab
-3. **Deploy Job (Prepared):**
-   - Azure login
-   - Push to Azure Container Registry
-   - Deploy to Azure Container Apps (ready to uncomment)
-
-**Evidence:**
-
-- `.github/workflows/ci-cd.yml` (142 lines)
-- Git commit history in repository
-- Automated test runs on GitHub Actions
-
----
-
-### 7. Weekly Integration Tests ✓
-
-**Implemented:**
-
-- **Integration Test Script:** `integration-test.sh`
-  - Automated environment setup (Docker Compose)
-  - Service health checks
-  - API endpoint testing
-  - Inter-service connectivity tests
-  - Automatic teardown
-
-**Test Coverage:**
-
-- Product Service health check
-- User Service health check
-- Product listing (public endpoint)
-- Product search (loose search)
-- User registration
-- Inter-service communication
-
-**Evidence:**
-
-- `integration-test.sh` (91 lines)
-- Can be run weekly for continuous validation
-- Tests verified working on December 29, 2025
-
----
-
-## 📦 Containers Implemented
-
-### 1. Product Service (Port 3000)
-
-**Technology:** Node.js 18, Express, PostgreSQL, Redis  
-**Features:**
-
-- Product browsing & filtering
-- Stock status (updates every 5 minutes)
-- Loose search (ILIKE queries)
-- Order creation with fund checks
-- Supplier API mocking
-- Email notifications
-- Redis caching (5-min TTL)
-
-### 2. User Service (Port 3001)
-
-**Technology:** Node.js 18, Express, Auth0  
-**Features:**
-
-- User registration
-- Profile updates
-- Account deletion/anonymization
-- Secure JWT authentication
-- Protected endpoints
-
-### 3. Frontend (Port 3002)
-
-**Technology:** React, Auth0 React SDK  
-**Features:**
-
-- Public product browsing
-- Auth0 login integration
-- Protected user profile display
-- Responsive UI
-
-### 4. Infrastructure Containers
-
-- **PostgreSQL 15:** Relational database
-- **Redis 7:** Caching layer
-- **Nginx:** (Prepared for production routing)
-
----
-
-## 🔒 Security Demonstrations
-
-1. **JWT Authentication:** User endpoints require valid Auth0 tokens
-2. **Rate Limiting:** Prevents abuse with 100 req/15min limit
-3. **CORS Protection:** Only specified origins allowed
-4. **Security Headers:** Helmet adds XSS, clickjacking protection
-5. **Input Validation:** All inputs validated before processing
-6. **Password Handling:** Delegated to Auth0 (no passwords stored)
-
----
-
-## 🛡️ Resilience Demonstrations
-
-1. **Service Timeout:** 5-second timeout prevents hanging
-2. **Graceful Degradation:** Returns fallback data when user-service unavailable
-3. **Database Retry:** Connection error handling
-4. **Health Monitoring:** Health checks for container orchestration
-5. **Graceful Shutdown:** Clean connection closure on SIGTERM
-
----
-
-## 🚀 DevOps Tools Used
-
-- **Version Control:** Git + GitHub
-- **CI/CD:** GitHub Actions
-- **Containerization:** Docker + Podman
-- **Orchestration:** Docker Compose
-- **Testing:** Jest, Supertest
-- **Security Scanning:** Trivy
-- **Cloud Platform:** Azure (ready for deployment)
-
----
-
-## 📊 Test Results
-
-**Unit Tests:**
-
-- Product Service: ✅ 13/13 tests passing
-- User Service: ✅ 12/12 tests passing
-
-**Integration Tests:**
-
-- All endpoints verified working
-- Inter-service communication tested
-- Resilience tested and confirmed
-
-**Security Scan:**
-
-- Trivy scanner integrated
-- Runs on every push
-
----
-
-## 📝 Next Steps (Stage 3)
-
-1. ✅ Deploy to Azure
-2. ✅ Create demonstration media (screenshots/videos)
-3. ✅ Complete narrative report
-4. ✅ Complete marking proforma
-5. ✅ Final submission preparation
-
----
-
-## 📚 Documentation
-
-- **Architecture:** See `DesignPlan/Architecture/`
-- **Deployment:** See `AZURE_DEPLOYMENT.md`
-- **Narrative:** See `NARRATIVE_REPORT.md`
-- **README:** See `README.md`
-
----
-
-**Status:** Stage 2 Implementation COMPLETE ✅  
-**All assignment requirements satisfied**
+This demonstrates microservices, DevOps practices, and cloud-ready architecture for the assignment.
