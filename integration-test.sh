@@ -2,11 +2,25 @@
 # Weekly Integration Test Script
 # Automates the setup, testing, and teardown of the dev environment.
 
+set -euo pipefail
+
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${GREEN}🚀 Starting Integration Tests...${NC}"
+
+cleanup() {
+    echo "🧹 Cleaning up..."
+    ${COMPOSE_CMD:-docker compose} down >/dev/null 2>&1 || true
+    for CMD in docker podman; do
+        if command -v "$CMD" >/dev/null 2>&1; then
+            "$CMD" network rm threeamigos_default >/dev/null 2>&1 || true
+        fi
+    done
+}
+
+trap cleanup EXIT
 
 # Fix for Fedora/Podman socket issues
 if [ -z "$DOCKER_HOST" ] && [ -S "$XDG_RUNTIME_DIR/podman/podman.sock" ]; then
@@ -39,13 +53,26 @@ if [ $? -ne 0 ]; then
         exit 1
 fi
 
-# Wait for services to be ready
-echo "Waiting for services to initialize (15s)..."
-sleep 15
+# Wait for services to be ready (bounded)
+CURL_BASE_ARGS=(--silent --show-error --max-time 10)
+
+echo "Waiting for services to become healthy (up to 60s)..."
+deadline=$((SECONDS + 60))
+until \
+    curl "${CURL_BASE_ARGS[@]}" http://localhost:3000/health >/dev/null 2>&1 && \
+    curl "${CURL_BASE_ARGS[@]}" http://localhost:3001/health >/dev/null 2>&1
+do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+        echo -e "${RED}❌ Services did not become healthy in time${NC}"
+        $COMPOSE_CMD ps || true
+        exit 1
+    fi
+    sleep 2
+done
 
 # 2. Test Product Service (Public)
 echo "TEST 1: Fetching Products (Public)..."
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/products)
+HTTP_STATUS=$(curl "${CURL_BASE_ARGS[@]}" -o /dev/null -w "%{http_code}" http://localhost:3000/products)
 if [ "$HTTP_STATUS" == "200" ]; then
     echo -e "${GREEN}✅ Product Service is reachable (200 OK)${NC}"
 else
@@ -56,7 +83,7 @@ fi
 # 3. Test Resilience (Product with User)
 # Expected: 200 OK, but User field should contain fallback message (because we have no auth token)
 echo "TEST 2: Testing Resilience (Product + User Fallback)..."
-RESPONSE=$(curl -s http://localhost:3000/product-with-user)
+RESPONSE=$(curl "${CURL_BASE_ARGS[@]}" http://localhost:3000/product-with-user)
 if echo "$RESPONSE" | grep -q "Unavailable (Resilience Fallback)"; then
     echo -e "${GREEN}✅ Resilience Check Passed: Fallback message received${NC}"
 else
@@ -67,24 +94,13 @@ fi
 
 # 4. Test Security (User Service Protected)
 echo "TEST 3: Testing Security (Accessing User without Token)..."
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/user)
+HTTP_STATUS=$(curl "${CURL_BASE_ARGS[@]}" -o /dev/null -w "%{http_code}" http://localhost:3001/user)
 if [ "$HTTP_STATUS" == "401" ] || [ "$HTTP_STATUS" == "400" ]; then
     echo -e "${GREEN}✅ Security Check Passed: Access denied (${HTTP_STATUS})${NC}"
 else
     echo -e "${RED}❌ Security Check Failed: Expected 401/400, got $HTTP_STATUS${NC}"
     exit 1
 fi
-
-# 5. Teardown
-echo "🧹 Cleaning up..."
-${COMPOSE_CMD} down
-
-# Ensure the default network is cleaned up to avoid future label mismatches
-for CMD in docker podman; do
-    if command -v "$CMD" >/dev/null 2>&1; then
-        "$CMD" network rm threeamigos_default >/dev/null 2>&1
-    fi
-done
 
 echo -e "${GREEN}🎉 All Integration Tests Passed!${NC}"
 exit 0

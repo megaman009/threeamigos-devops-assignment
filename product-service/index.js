@@ -1,7 +1,6 @@
 const SERVICE_NAME = 'product-service';
 
 const express = require('express');
-const { Client } = require('pg');
 const redis = require('redis');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -11,10 +10,14 @@ const app = express();
 
 // Security Middleware
 app.use(helmet()); // Adds security headers
-app.use(cors({  // Enable CORS for frontend
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3002',
-  credentials: true
-}));
+
+// Enable CORS for frontend
+const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3002';
+app.use(cors(
+  corsOrigin === '*'
+    ? { origin: '*', credentials: false }
+    : { origin: corsOrigin, credentials: true }
+));
 app.use(express.json());
 
 // Rate Limiting (prevent abuse)
@@ -25,39 +28,243 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/api/', limiter); // Apply to API routes
+
+// Avoid creating long-lived timers in unit tests (express-rate-limit uses an internal interval)
+if (process.env.NODE_ENV !== 'test') {
+  app.use((req, res, next) => (req.path === '/health' ? next() : limiter(req, res, next)));
+}
 
 // Global database clients
 let clients = { db: null, redis: null };
 
+function resolveDatabaseUrl() {
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+
+  const host = process.env.DB_HOST;
+  const user = process.env.DB_USER;
+  const password = process.env.DB_PASSWORD;
+  const dbName = process.env.DB_NAME || 'postgres';
+  const port = process.env.DB_PORT || '5432';
+  if (!host || !user || !password) return undefined;
+
+  const needsSsl =
+    process.env.NODE_ENV === 'production' || /\.postgres\.database\.azure\.com$/i.test(host);
+
+  const query = needsSsl ? '?sslmode=require' : '';
+  return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${dbName}${query}`;
+}
+
+function resolveRedisUrl() {
+  if (process.env.REDIS_URL) return process.env.REDIS_URL;
+
+  const host = process.env.REDIS_HOST;
+  const port = process.env.REDIS_PORT || '6379';
+  if (!host) return undefined;
+
+  const password = process.env.REDIS_PASSWORD;
+  const useTls =
+    process.env.REDIS_TLS === 'true' || port === '6380' || process.env.NODE_ENV === 'production';
+  const scheme = useTls ? 'rediss' : 'redis';
+  const auth = password ? `:${encodeURIComponent(password)}@` : '';
+  return `${scheme}://${auth}${host}:${port}`;
+}
+
+function resolveUserServiceUrl() {
+  const raw = process.env.USER_SERVICE_URL || 'http://localhost:3001';
+  return raw.replace(/\/+$/, '');
+}
+
+async function ensureOrdersSchema(db) {
+  const exists = await db.query("SELECT to_regclass('public.orders') AS reg");
+  if (!exists.rows[0]?.reg) return;
+
+  // If the table was created by an older version of the assignment, it may contain
+  // required columns that our current INSERTs don't populate (e.g. user_email/total/items).
+  // Make them safe by applying defaults so new inserts succeed.
+  try {
+    await db.query("ALTER TABLE public.orders ALTER COLUMN user_email SET DEFAULT ''");
+  } catch (e) {
+    // column may not exist / privileges / already compatible
+  }
+  try {
+    await db.query('ALTER TABLE public.orders ALTER COLUMN total SET DEFAULT 0');
+  } catch (e) {
+    // ignore
+  }
+  try {
+    await db.query("ALTER TABLE public.orders ALTER COLUMN items SET DEFAULT '[]'::jsonb");
+  } catch (e) {
+    // ignore
+  }
+
+  // Backfill if legacy columns exist but may contain NULLs
+  try {
+    await db.query("UPDATE public.orders SET user_email = '' WHERE user_email IS NULL");
+  } catch (e) {
+    // ignore
+  }
+  try {
+    await db.query('UPDATE public.orders SET total = 0 WHERE total IS NULL');
+  } catch (e) {
+    // ignore
+  }
+  try {
+    await db.query("UPDATE public.orders SET items = '[]'::jsonb WHERE items IS NULL");
+  } catch (e) {
+    // ignore
+  }
+
+  // Rename common legacy columns (safe + idempotent)
+  await db.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='orders' AND column_name='userid'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='orders' AND column_name='user_id'
+      ) THEN
+        ALTER TABLE public.orders RENAME COLUMN userid TO user_id;
+      END IF;
+
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='orders' AND column_name='productid'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='orders' AND column_name='product_id'
+      ) THEN
+        ALTER TABLE public.orders RENAME COLUMN productid TO product_id;
+      END IF;
+
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='orders' AND column_name='createdat'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='orders' AND column_name='created_at'
+      ) THEN
+        ALTER TABLE public.orders RENAME COLUMN createdat TO created_at;
+      END IF;
+
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='orders' AND column_name='dispatchedat'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='orders' AND column_name='dispatched_at'
+      ) THEN
+        ALTER TABLE public.orders RENAME COLUMN dispatchedat TO dispatched_at;
+      END IF;
+    END $$;
+  `);
+
+  // Add missing columns (safe if they already exist)
+  await db.query('ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS user_id INTEGER');
+  await db.query('ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS product_id INTEGER');
+  await db.query('ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS quantity INTEGER');
+  await db.query('ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS total_price DECIMAL(10,2)');
+  await db.query('ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS status VARCHAR(32)');
+  await db.query('ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMP');
+  await db.query('ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMP NULL');
+
+  // Backfill common defaults
+  await db.query('UPDATE public.orders SET user_id = 0 WHERE user_id IS NULL');
+  await db.query("UPDATE public.orders SET status = 'created' WHERE status IS NULL");
+  await db.query('UPDATE public.orders SET created_at = NOW() WHERE created_at IS NULL');
+
+  // Best-effort: set defaults / constraints
+  try {
+    await db.query('ALTER TABLE public.orders ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP');
+  } catch (e) {
+    console.warn(`[${SERVICE_NAME}] orders.created_at default not enforced: ${e.message}`);
+  }
+
+  try {
+    await db.query("ALTER TABLE public.orders ALTER COLUMN status SET DEFAULT 'created'");
+  } catch (e) {
+    console.warn(`[${SERVICE_NAME}] orders.status default not enforced: ${e.message}`);
+  }
+
+  try {
+    await db.query('ALTER TABLE public.orders ALTER COLUMN user_id SET NOT NULL');
+  } catch (e) {
+    console.warn(`[${SERVICE_NAME}] orders.user_id NOT NULL not enforced: ${e.message}`);
+  }
+
+  // Best-effort: add FK if possible
+  try {
+    await db.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'orders_product_id_fkey'
+        ) THEN
+          ALTER TABLE public.orders
+            ADD CONSTRAINT orders_product_id_fkey
+            FOREIGN KEY (product_id)
+            REFERENCES public.products(id);
+        END IF;
+      END $$;
+    `);
+  } catch (e) {
+    console.warn(`[${SERVICE_NAME}] orders.product_id FK not enforced: ${e.message}`);
+  }
+}
+
 // Connect to databases (only in production, not in tests)
 async function connectDatabases() {
+  // PostgreSQL is required; Redis is optional (cache only).
+  // This keeps Azure deployments working even when Redis isn't provisioned.
+  const { Pool } = require('pg');
+
+  const databaseUrl = resolveDatabaseUrl();
+  if (!databaseUrl) {
+    console.error(`[${SERVICE_NAME}] Missing DATABASE_URL (or DB_HOST/DB_USER/DB_PASSWORD)`);
+    if (process.env.NODE_ENV !== 'test') process.exit(1);
+    return;
+  }
+
+  const db = new Pool({
+    connectionString: databaseUrl,
+    max: Number(process.env.PG_POOL_MAX || 10),
+    idleTimeoutMillis: 30_000,
+  });
+
   try {
-    // Create new clients each time to avoid reuse issues
-    const { Client } = require('pg');
-    const redis = require('redis');
-    
-    const db = new Client({
-      connectionString: process.env.DATABASE_URL,
-    });
-    
-    const redisCli = redis.createClient({
-      url: process.env.REDIS_URL,
-    });
-
-    // Connect to databases
-    await db.connect();
+    await db.query('SELECT 1');
     console.log(`[${SERVICE_NAME}] Connected to PostgreSQL`);
-
-    await redisCli.connect();
-    console.log(`[${SERVICE_NAME}] Connected to Redis`);
-
-    // Store references globally for use in routes
     clients.db = db;
-    clients.redis = redisCli;
+  } catch (error) {
+    console.error(`[${SERVICE_NAME}] PostgreSQL connection failed:`, error);
+    if (process.env.NODE_ENV !== 'test') process.exit(1);
+    return;
+  }
 
-    // Create products table if it doesn't exist
-    await db.query(`
+  const redisUrl = resolveRedisUrl();
+  if (!redisUrl) {
+    console.warn(`[${SERVICE_NAME}] Redis not configured; caching disabled.`);
+    clients.redis = null;
+  } else {
+    const redisCli = redis.createClient({ url: redisUrl });
+    try {
+      await redisCli.connect();
+      console.log(`[${SERVICE_NAME}] Connected to Redis`);
+      clients.redis = redisCli;
+    } catch (error) {
+      console.warn(`[${SERVICE_NAME}] Redis connection failed; caching disabled: ${error.message}`);
+      try {
+        await redisCli.quit();
+      } catch (e) {
+        // ignore
+      }
+      clients.redis = null;
+    }
+  }
+
+  // Create products table if it doesn't exist
+  await db.query(`
       CREATE TABLE IF NOT EXISTS products (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -66,10 +273,10 @@ async function connectDatabases() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    console.log(`[${SERVICE_NAME}] Products table ready`);
+  console.log(`[${SERVICE_NAME}] Products table ready`);
 
-    // Create orders table if it doesn't exist
-    await db.query(`
+  // Create orders table if it doesn't exist
+  await db.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -81,32 +288,24 @@ async function connectDatabases() {
         dispatched_at TIMESTAMP NULL
       )
     `);
-    console.log(`[${SERVICE_NAME}] Orders table ready`);
+  console.log(`[${SERVICE_NAME}] Orders table ready`);
 
-    // Insert sample data if table is empty
-    const result = await db.query('SELECT COUNT(*) FROM products');
-    if (parseInt(result.rows[0].count) === 0) {
-      await db.query(`
+  // If the table existed from a previous run with a different schema, fix it.
+  await ensureOrdersSchema(db);
+
+  // Insert sample data if table is empty
+  const result = await db.query('SELECT COUNT(*) FROM products');
+  if (parseInt(result.rows[0].count) === 0) {
+    await db.query(`
         INSERT INTO products (name, stock, price) VALUES
         ('Coffee Beans', 42, 12.99),
         ('Espresso Machine', 5, 299.99)
       `);
-      console.log(`[${SERVICE_NAME}] Sample products inserted`);
-    }
-
-  } catch (error) {
-    console.error(`[${SERVICE_NAME}] Database connection failed:`, error);
-    // Don't exit in test environment
-    if (process.env.NODE_ENV !== 'test') {
-      process.exit(1);
-    }
+    console.log(`[${SERVICE_NAME}] Sample products inserted`);
   }
 }
 
-// Initialize databases (only in non-test environments)
-if (process.env.NODE_ENV !== 'test') {
-  connectDatabases();
-}
+// Note: we connect + start the server in the `require.main === module` block below.
 
 // Health check
 app.get('/health', (req, res) => {
@@ -119,20 +318,43 @@ app.get('/health', (req, res) => {
 app.get('/products', async (req, res) => {
   try {
     // Try to get from Redis cache first
-    const cachedProducts = await clients.redis.get('products');
-    if (cachedProducts) {
-      console.log(`[${SERVICE_NAME}] Returning products from cache`);
-      return res.json(JSON.parse(cachedProducts));
+    if (clients.redis) {
+      try {
+        const cachedProducts = await clients.redis.get('products');
+        if (cachedProducts) {
+          console.log(`[${SERVICE_NAME}] Returning products from cache`);
+          return res.json(JSON.parse(cachedProducts));
+        }
+      } catch (e) {
+        console.warn(`[${SERVICE_NAME}] Redis cache read failed, falling back to DB: ${e.message}`);
+      }
     }
 
     // If not in cache, query database
     console.log(`[${SERVICE_NAME}] Fetching products from database`);
-    const result = await clients.db.query('SELECT id, name, stock, price FROM products ORDER BY id');
+    // Protect the UI from duplicate seed data: return one row per product name (lowest id wins).
+    // Keeps ordering stable by the chosen id.
+    const result = await clients.db.query(`
+      SELECT p.id, p.name, p.stock, p.price
+      FROM products p
+      JOIN (
+        SELECT MIN(id) AS id
+        FROM products
+        GROUP BY name
+      ) pick USING (id)
+      ORDER BY p.id
+    `);
     
     const products = result.rows;
     
     // Cache the result for 5 minutes (300 seconds)
-    await clients.redis.setEx('products', 300, JSON.stringify(products));
+    if (clients.redis) {
+      try {
+        await clients.redis.setEx('products', 300, JSON.stringify(products));
+      } catch (e) {
+        console.warn(`[${SERVICE_NAME}] Redis cache write failed: ${e.message}`);
+      }
+    }
     
     res.json(products);
   } catch (error) {
@@ -149,8 +371,19 @@ app.get('/products/search', async (req, res) => {
       return res.status(400).json({ error: 'Missing q parameter' });
     }
 
+    // Same de-duplication strategy as /products (unique by name, lowest id wins)
     const result = await clients.db.query(
-      'SELECT id, name, stock, price FROM products WHERE name ILIKE $1 ORDER BY id',
+      `
+        SELECT p.id, p.name, p.stock, p.price
+        FROM products p
+        JOIN (
+          SELECT MIN(id) AS id
+          FROM products
+          WHERE name ILIKE $1
+          GROUP BY name
+        ) pick USING (id)
+        ORDER BY p.id
+      `,
       [`%${q}%`]
     );
     res.json(result.rows);
@@ -273,25 +506,61 @@ app.get('/sync-supplier', async (req, res) => {
 
 // Basic ordering APIs
 app.post('/orders', async (req, res) => {
+  let tx = null;
+  let q = null;
+  const rollbackAndRelease = async () => {
+    if (!tx) return;
+    try {
+      if (typeof q === 'function') await q('ROLLBACK');
+    } catch (_) {
+      // ignore
+    }
+    try {
+      if (typeof tx.release === 'function') tx.release();
+    } catch (_) {
+      // ignore
+    }
+    tx = null;
+  };
+
   try {
     const { userId, productId, quantity } = req.body || {};
     if (!userId || !productId || !quantity || quantity <= 0) {
       return res.status(400).json({ error: 'Missing or invalid fields: userId, productId, quantity' });
     }
 
-    const productRes = await clients.db.query('SELECT id, name, stock, price FROM products WHERE id = $1', [productId]);
+    const db = clients.db;
+    if (!db) return res.status(503).json({ error: 'Database not ready' });
+
+    // If we have a Pool, use a transaction to avoid partial updates.
+    tx = typeof db.connect === 'function' ? await db.connect() : null;
+    q = tx ? tx.query.bind(tx) : db.query.bind(db);
+
+    if (tx) await q('BEGIN');
+
+    const productRes = await q('SELECT id, name, stock, price FROM products WHERE id = $1 FOR UPDATE', [productId]);
     const product = productRes.rows[0];
-    if (!product) return res.status(404).json({ error: 'Product not found' });
-    if (product.stock < quantity) return res.status(400).json({ error: 'Insufficient stock' });
+    if (!product) {
+      await rollbackAndRelease();
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    if (product.stock < quantity) {
+      await rollbackAndRelease();
+      return res.status(400).json({ error: 'Insufficient stock' });
+    }
 
     // Check user funds via user-service (mocked public endpoint)
-    const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3001';
+    const USER_SERVICE_URL = resolveUserServiceUrl();
     let funds = 0;
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
-      const resp = await fetch(`${USER_SERVICE_URL}/funds?userId=${encodeURIComponent(userId)}`, { signal: controller.signal });
-      clearTimeout(timeout);
+      let resp;
+      try {
+        resp = await fetch(`${USER_SERVICE_URL}/funds?userId=${encodeURIComponent(userId)}`, { signal: controller.signal });
+      } finally {
+        clearTimeout(timeout);
+      }
       if (resp.ok) {
         const data = await resp.json();
         funds = Number(data.funds || 0);
@@ -303,7 +572,10 @@ app.post('/orders', async (req, res) => {
     }
 
     const totalPrice = Number((Number(product.price) * quantity).toFixed(2));
-    if (funds < totalPrice) return res.status(400).json({ error: 'Insufficient funds' });
+    if (funds < totalPrice) {
+      await rollbackAndRelease();
+      return res.status(400).json({ error: 'Insufficient funds' });
+    }
 
     // Simulate supplier purchase
     try {
@@ -311,20 +583,55 @@ app.post('/orders', async (req, res) => {
       const supplierProducts = await supplier.getProducts();
       const supplierProduct = supplierProducts.find(sp => sp.name === product.name);
       if (!supplierProduct || supplierProduct.stock < quantity) {
+        await rollbackAndRelease();
         return res.status(400).json({ error: 'Supplier out of stock' });
       }
     } catch (e) {
+      await rollbackAndRelease();
       return res.status(502).json({ error: 'Supplier purchase failed' });
     }
 
     // Deduct stock and create order
-    await clients.db.query('UPDATE products SET stock = stock - $1 WHERE id = $2', [quantity, productId]);
-    const orderRes = await clients.db.query(
-      'INSERT INTO orders (user_id, product_id, quantity, total_price, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [userId, productId, quantity, totalPrice, 'created']
-    );
+    await q('UPDATE products SET stock = stock - $1 WHERE id = $2', [quantity, productId]);
+
+    const orderEmail = `user${userId}@example.com`;
+    const orderItems = [
+      { productId: Number(productId), name: product.name, quantity: Number(quantity), unitPrice: Number(product.price) }
+    ];
+
+    let orderRes;
+    try {
+      // Legacy-compatible insert (older schema requires user_email/total/items)
+      orderRes = await q(
+        'INSERT INTO orders (user_id, product_id, quantity, total_price, status, user_email, total, items) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+        [userId, productId, quantity, totalPrice, 'created', orderEmail, totalPrice, JSON.stringify(orderItems)]
+      );
+    } catch (e) {
+      // If legacy columns don't exist, fall back to the current schema insert.
+      if (e && (e.code === '42703' || /column .* does not exist/i.test(String(e.message)))) {
+        orderRes = await q(
+          'INSERT INTO orders (user_id, product_id, quantity, total_price, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+          [userId, productId, quantity, totalPrice, 'created']
+        );
+      } else {
+        throw e;
+      }
+    }
+
+    if (tx) await q('COMMIT');
+    if (tx && typeof tx.release === 'function') tx.release();
+    tx = null;
 
     const order = orderRes.rows[0];
+
+    // Invalidate products cache so stock updates reflect quickly
+    if (clients.redis && typeof clients.redis.del === 'function') {
+      try {
+        await clients.redis.del('products');
+      } catch (e) {
+        console.warn(`[${SERVICE_NAME}] Redis cache invalidate failed: ${e.message}`);
+      }
+    }
     
     // Send email notification
     sendEmailNotification('order_created', {
@@ -336,6 +643,7 @@ app.post('/orders', async (req, res) => {
 
     res.status(201).json(order);
   } catch (error) {
+    await rollbackAndRelease();
     console.error(`[${SERVICE_NAME}] Error creating order:`, error);
     res.status(500).json({ error: 'Failed to create order' });
   }
@@ -345,8 +653,75 @@ app.get('/orders', async (req, res) => {
   try {
     const userId = Number(req.query.userId || 0);
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
-    const result = await clients.db.query('SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
-    res.json(result.rows);
+
+    const db = clients.db;
+    if (!db) return res.status(503).json({ error: 'Database not ready' });
+
+    // Be robust to schema drift in existing Azure DBs.
+    // We try a small sequence of likely schemas and ordering columns.
+    const email = `user${userId}@example.com`;
+    const candidates = [
+      { sql: 'SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC', params: [userId] },
+      { sql: 'SELECT * FROM orders WHERE user_id = $1 ORDER BY id DESC', params: [userId] },
+      { sql: 'SELECT * FROM orders WHERE userid = $1 ORDER BY createdat DESC', params: [userId] },
+      { sql: 'SELECT * FROM orders WHERE userid = $1 ORDER BY id DESC', params: [userId] },
+      { sql: 'SELECT * FROM orders WHERE user_email = $1 ORDER BY created_at DESC', params: [email] },
+      { sql: 'SELECT * FROM orders WHERE user_email = $1 ORDER BY id DESC', params: [email] },
+    ];
+
+    const normalizeOrderRow = (row) => {
+      // Keep response stable across schema variants and avoid duplicated "item" data.
+      // Many DBs have both an `items` JSON column and legacy `product_id/quantity/total_price` columns.
+      const normalized = { ...row };
+
+      let items = normalized.items;
+      if (typeof items === 'string') {
+        try {
+          items = JSON.parse(items);
+        } catch {
+          items = null;
+        }
+      }
+
+      if (!Array.isArray(items) || items.length === 0) {
+        // Fallback: synthesize a single-item array from legacy columns.
+        const productId = normalized.product_id ?? normalized.productId ?? null;
+        const quantity = normalized.quantity ?? 1;
+        if (productId != null) {
+          items = [{ productId, quantity }];
+        } else {
+          items = [];
+        }
+      }
+
+      // De-dupe items by productId (keep first occurrence).
+      const seen = new Set();
+      normalized.items = items.filter((it) => {
+        const key = (it && (it.productId ?? it.product_id)) ?? JSON.stringify(it);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      // If we have `items`, remove legacy per-item columns to avoid UI confusion.
+      delete normalized.product_id;
+      delete normalized.productId;
+      delete normalized.quantity;
+      delete normalized.total_price;
+
+      return normalized;
+    };
+
+    let lastError;
+    for (const c of candidates) {
+      try {
+        const result = await db.query(c.sql, c.params);
+        return res.json(result.rows.map(normalizeOrderRow));
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw lastError;
   } catch (error) {
     console.error(`[${SERVICE_NAME}] Error fetching orders:`, error);
     res.status(500).json({ error: 'Failed to fetch orders' });
@@ -394,9 +769,8 @@ app.get('/product-with-user', async (req, res) => {
 
   try {
     // Get product from database
-    const result = await clients.db.query('SELECT id, name, stock, price FROM products WHERE id = 1');
-    const products = result.rows;
-    const product = products[0];
+    const result = await clients.db.query('SELECT id, name, stock, price FROM products ORDER BY id LIMIT 1');
+    const product = result.rows[0];
 
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
@@ -405,16 +779,20 @@ app.get('/product-with-user', async (req, res) => {
     let user = null;
     try {
       console.log(`[${SERVICE_NAME}] calling user-service at ${process.env.USER_SERVICE_URL}`);
-      const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3001';
+      const USER_SERVICE_URL = resolveUserServiceUrl();
       
       // Attempt to fetch user with timeout
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
-      
-      const response = await fetch(`${USER_SERVICE_URL}/user`, {
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
+
+      let response;
+      try {
+        response = await fetch(`${USER_SERVICE_URL}/user`, {
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
       
       if (!response.ok) {
         throw new Error(`User service returned ${response.status}`);
@@ -453,8 +831,6 @@ const PORT = process.env.PORT || 3000;
 if (require.main === module) {
   // Initialize databases and start server only when run directly (not in tests)
   connectDatabases().then(() => {
-    // Schedule stock update every 5 minutes
-    setInterval(updateStockFromSupplier, 5 * 60 * 1000);
     // Schedule daily catalogue/price refresh
     setInterval(updateStockFromSupplier, 24 * 60 * 60 * 1000);
     const server = app.listen(PORT, () => {

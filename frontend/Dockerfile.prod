@@ -1,0 +1,17 @@
+# Production image that serves the already-built React bundle.
+# Build the bundle first (example):
+#   cd frontend
+#   REACT_APP_PRODUCT_API_URL=... REACT_APP_USER_API_URL=... npm run build
+
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy pre-built static assets (Create React App output)
+COPY build ./build
+
+RUN npm install -g serve
+
+EXPOSE 3002
+
+CMD ["serve", "-s", "build", "-l", "3002"]

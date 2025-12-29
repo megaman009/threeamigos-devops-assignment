@@ -13,22 +13,44 @@ function App() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [orderSuccess, setOrderSuccess] = useState(null);
 
-  // API Base URL from environment (or default to localhost:3000 for local dev)
-  const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+  // API Base URLs from environment (with local defaults)
+  // - Product service serves: /products, /orders
+  // - User service serves: /user (Auth0 protected)
+  const PRODUCT_API_BASE = process.env.REACT_APP_PRODUCT_API_URL || process.env.REACT_APP_API_URL || 'http://localhost:3000';
+  const USER_API_BASE = process.env.REACT_APP_USER_API_URL || 'http://localhost:3001';
+
+  // Demo mapping: the backend expects a numeric userId.
+  // Keep this configurable without adding extra UI.
+  const DEMO_USER_ID = Number(process.env.REACT_APP_DEMO_USER_ID || 1);
+
+  const dedupeProductsById = useCallback((list) => {
+    if (!Array.isArray(list)) return [];
+
+    const seen = new Set();
+    const out = [];
+    for (const item of list) {
+      const id = item?.id;
+      if (id == null) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(item);
+    }
+    return out;
+  }, []);
 
   const fetchPublicProducts = useCallback(async () => {
     try {
       setLoading(true);
-      const productsResponse = await fetch(`${API_BASE}/products`);
+      const productsResponse = await fetch(`${PRODUCT_API_BASE}/products`);
       if (!productsResponse.ok) throw new Error('Failed to fetch products');
       const productsData = await productsResponse.json();
-      setProducts(productsData);
+      setProducts(dedupeProductsById(productsData));
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [API_BASE]);
+  }, [PRODUCT_API_BASE, dedupeProductsById]);
 
   const searchProducts = async (query) => {
     if (!query.trim()) {
@@ -39,10 +61,10 @@ function App() {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${API_BASE}/products/search?q=${encodeURIComponent(query)}`);
+      const response = await fetch(`${PRODUCT_API_BASE}/products/search?q=${encodeURIComponent(query)}`);
       if (!response.ok) throw new Error('Search failed');
       const data = await response.json();
-      setProducts(data);
+      setProducts(dedupeProductsById(data));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -123,13 +145,14 @@ function App() {
       
       // Place order for each item in cart
       const orderPromises = cart.map(item =>
-        fetch(`${API_BASE}/orders`, {
+        fetch(`${PRODUCT_API_BASE}/orders`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`
           },
           body: JSON.stringify({
+            userId: DEMO_USER_ID,
             productId: item.id,
             quantity: item.quantity
           })
@@ -161,13 +184,13 @@ function App() {
       setError(null);
 
       // 1. Fetch products (Public)
-      const productsResponse = await fetch(`${API_BASE}/products`);
+      const productsResponse = await fetch(`${PRODUCT_API_BASE}/products`);
       const productsData = await productsResponse.json();
-      setProducts(productsData);
+      setProducts(dedupeProductsById(productsData));
 
       // 2. Fetch User Profile (Protected)
       const token = await getAccessTokenSilently();
-      const userResponse = await fetch(`${API_BASE}/user`, {
+      const userResponse = await fetch(`${USER_API_BASE}/user`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -185,7 +208,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [API_BASE, getAccessTokenSilently]);
+  }, [PRODUCT_API_BASE, USER_API_BASE, getAccessTokenSilently, dedupeProductsById]);
 
   useEffect(() => {
     if (isAuthenticated) {

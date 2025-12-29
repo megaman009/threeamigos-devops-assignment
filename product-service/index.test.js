@@ -94,7 +94,9 @@ describe('Product Service API Tests', () => {
 
       expect(response.body).toEqual(dbProducts);
       expect(clients.redis.get).toHaveBeenCalledWith('products');
-      expect(clients.db.query).toHaveBeenCalledWith('SELECT id, name, stock, price FROM products ORDER BY id');
+      expect(clients.db.query).toHaveBeenCalledWith(
+        expect.stringContaining('FROM products p')
+      );
       expect(clients.redis.setEx).toHaveBeenCalledWith('products', 300, JSON.stringify(dbProducts));
     });
 
@@ -193,7 +195,7 @@ describe('Product Service API Tests', () => {
         { id: 1, name: 'Coffee Beans', stock: 42, price: 12.99 }
       ]);
       expect(clients.db.query).toHaveBeenCalledWith(
-        'SELECT id, name, stock, price FROM products WHERE name ILIKE $1 ORDER BY id',
+        expect.stringContaining('WHERE name ILIKE $1'),
         ['%coffee%']
       );
     });

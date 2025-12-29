@@ -10,10 +10,12 @@ const SERVICE_NAME = 'user-service';
 
 // Security Middleware
 app.use(helmet());
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3002',
-  credentials: true
-}));
+const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3002';
+app.use(cors(
+  corsOrigin === '*'
+    ? { origin: '*', credentials: false }
+    : { origin: corsOrigin, credentials: true }
+));
 app.use(express.json());
 
 // Rate Limiting
@@ -22,7 +24,9 @@ const limiter = rateLimit({
   max: 100,
   message: 'Too many requests, please try again later.'
 });
-app.use(limiter);
+if (process.env.NODE_ENV !== 'test') {
+  app.use((req, res, next) => (req.path === '/health' ? next() : limiter(req, res, next)));
+}
 
 app.use((req, res, next) => {
   console.log(`[${SERVICE_NAME}] ${req.method} ${req.path}`);
