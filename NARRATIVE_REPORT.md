@@ -1,86 +1,143 @@
-# Stage 3: Narrative Report
+# Narrative Report - Technology Decisions
 
-**Student Name:** Ali Mustafa
-**Student ID:** 2110097
-**Module:** Cloud Computing DevOps (CIS3032-N)
+**Student:** Ali Mustafa (2110097)  
+**Module:** Cloud Computing DevOps
 
 ## Introduction
 
-This report documents the technology choices and design decisions made during the implementation of the ThAmCo system. The goal was to build a scalable, resilient, and secure microservices architecture.
+For this assignment, I built about 20% of the ThAmCo e-commerce system, focusing on product browsing and user authentication. This report explains the technology choices I made and why.
 
-## Technology Choices & Justification
+## Technology Decisions
 
-### 1. Microservices Architecture
+### 1. Why Microservices?
 
-I chose a container-based microservices architecture over a monolith.
+I split the system into separate services (Product Service, User Service) instead of one big application.
 
-- **Consequence:** Increased complexity in deployment (networking, orchestration) but gained independent scaling and fault isolation.
-- **Decision:** This aligns with the assignment requirement to demonstrate "cloud-capable" systems where the Product Service can survive if the User Service fails.
+**Why I did this:**
 
-### 2. Backend: Node.js & Express
+- If one service crashes, the others keep working
+- I can update one service without touching the others
+- Matches what the assignment asked for (cloud-capable, resilient)
 
-- **Choice:** Node.js was selected for both `product-service` and `user-service`.
-- **Justification:** Node's non-blocking I/O is ideal for I/O-heavy operations like database queries and API calls. It also allows for sharing logic (e.g., validation) with the Frontend if needed (JavaScript everywhere).
+**The downside:**
 
-### 3. Database: PostgreSQL & Redis
+- More complicated to set up and deploy
+- Need Docker/container knowledge
+- Services need to talk to each other over the network
 
-- **PostgreSQL:** Chosen for its reliability and relational data integrity (ACID compliance) for critical product/user data.
-- **Redis (Look-aside Cache):** Implemented in the Product Service to reduce database load.
-  - _Trade-off:_ Adds infrastructure complexity but significantly improves read performance for high-traffic endpoints like `/products`.
+### 2. Why Node.js?
 
-### 4. Security: Auth0 (OAuth2/OIDC)
+I used Node.js for both backend services.
 
-- **Decision:** Offloaded authentication to Auth0 instead of building a custom solution.
-- **Consequence:** Avoided handling sensitive passwords directly (reducing security risk).
-- **Implementation:** Used `express-oauth2-jwt-bearer` for stateless verification. This ensures that even if a container restarts, authentication validity is preserved via the centralized provider.
+**Reasons:**
 
-## DevOps Practices
+- Fast for handling lots of requests (good for product browsing)
+- Same language as React frontend (JavaScript everywhere)
+- Lots of npm packages available
+- I'm comfortable with it
 
-### CI/CD Pipeline (GitHub Actions)
+### 3. Why PostgreSQL and Redis?
 
-I implemented a pipeline that verifies code quality before deployment:
+**PostgreSQL:**
 
-1.  **Automated Testing:** Runs `npm test` across all services.
-2.  **Security Scanning:** Integrated `trivy` to scan the filesystem for vulnerabilities before building images.
-3.  **Infrastructure as Code:** Used `docker-compose` to define the environment for both local dev and integration testing.
+- Stores product and order data
+- Good for data that needs to be accurate (prices, stock)
+- Handles relationships well (products → orders → users)
 
-### Resilience Strategy
+**Redis:**
 
-- **Graceful Degradation:** The Product Service implements a try-catch block around the User Service call. If the User Service is unreachable (or returns 401), the system falls back to a default "Unavailable" object rather than returning a 500 error.
-- **Health Checks:** Custom health endpoints (`/health`) were added to allow the orchestration layer to restart unhealthy containers automatically.
+- Caches product lists to make browsing faster
+- Updates every 5 minutes (as required)
+- Reduces database load
+
+**Trade-off:** Redis adds complexity but makes the app much faster.
+
+### 4. Why Auth0 Instead of Building My Own Login?
+
+**Reasons:**
+
+- Don't have to store passwords (more secure)
+- They handle all the security stuff (encryption, tokens, etc.)
+- JWT tokens work even if containers restart
+- Industry standard approach
+
+**Downside:** Relies on external service, but that's acceptable for this project.
+
+## DevOps Practices I Used
+
+### Testing
+
+I wrote automated tests that run every time I push code:
+
+- 13 tests for Product Service
+- 12 tests for User Service
+- GitHub Actions runs them automatically
+
+This catches bugs before they make it to production.
+
+### Security Scanning
+
+I added Trivy to scan for security vulnerabilities in my code and containers. It runs automatically in the pipeline.
+
+### Docker Compose
+
+I used Docker Compose to run everything locally for testing. Same setup works on my machine and in the cloud (just change environment variables).
+
+## How I Made It Resilient
+
+The system needs to keep working even when things go wrong:
+
+**Timeouts:** If User Service doesn't respond in 5 seconds, Product Service continues with fallback data instead of hanging forever.
+
+**Graceful Degradation:** If you can't log in, you can still browse products. The system works in "degraded mode" rather than completely failing.
+
+**Health Checks:** Each service has a `/health` endpoint so Docker knows if it's working properly.
+
+## Consequences of My Decisions
+
+### Good outcomes:
+
+- Services are independent and can be updated separately
+- System is more resilient to failures
+- Security is handled by Auth0 (experts)
+- Easy to test locally with Docker
+
+### Challenges:
+
+- More complex to set up initially
+- Need to understand container networking
+- Auth0 dependency (but acceptable trade-off)
+- Slightly more resource-intensive than a monolith
 
 ## Conclusion
 
-The system successfully meets the requirements of a modern, cloud-native application. The trade-offs made (complexity vs. scalability) were managed through robust DevOps tooling and clear architectural boundaries.
+The system meets the assignment requirements and demonstrates cloud-capable, resilient microservices. The technology choices balance simplicity (for a student project) with real-world practices (Docker, CI/CD, Auth0).
 
-## Architecture Diagram
+The main lesson: microservices add complexity but provide flexibility and resilience that's worth it for cloud deployments.
+F[Frontend (React, port 3002)]
+end
+subgraph Services
+PS[Product Service (Express, port 3000)]
+US[User Service (Express, port 3001)]
+end
+subgraph Data
+PG[(PostgreSQL)]
+RD[(Redis Cache)]
+end
+subgraph External
+AUTH0[Auth0 (OIDC)]
+end
 
-```mermaid
-graph LR
-  subgraph Client
-    F[Frontend (React, port 3002)]
-  end
-  subgraph Services
-    PS[Product Service (Express, port 3000)]
-    US[User Service (Express, port 3001)]
-  end
-  subgraph Data
-    PG[(PostgreSQL)]
-    RD[(Redis Cache)]
-  end
-  subgraph External
-    AUTH0[Auth0 (OIDC)]
-  end
+F -->|HTTP| PS
+PS -->|JWT-protected /user| US
+PS -->|SQL| PG
+PS -->|Cache| RD
+US -->|Verify JWT| AUTH0
 
-  F -->|HTTP| PS
-  PS -->|JWT-protected /user| US
-  PS -->|SQL| PG
-  PS -->|Cache| RD
-  US -->|Verify JWT| AUTH0
+PS ---|Health: /health| PS
+US ---|Health: /health| US
 
-  PS ---|Health: /health| PS
-  US ---|Health: /health| US
-```
+````
 
 ### API Flow (Resilience + Security)
 
@@ -111,7 +168,7 @@ sequenceDiagram
   else User service unavailable/unauthorized
     ProductService-->>Client: 200 { product, user: fallback }
   end
-```
+````
 
 ### Ports & Environment
 

@@ -1,53 +1,57 @@
-# Stage 2 Implementation - Completion Summary
+# Stage 2 Implementation - What I Built
 
 **Student:** Ali Mustafa (2110097)  
-**Date:** December 29, 2025  
 **Module:** Cloud Computing DevOps (CIS3032-N)
 
-## ✅ Stage 2 Requirements - Implementation Status
+This document explains what I implemented for Stage 2 of the ThAmCo assignment.
 
-### 1. Application Codebase with Automated Testing ✓
+## What I Built (About 20% of the Full System)
 
-**Implemented:**
+I focused on the Product Browsing and User Authentication parts of ThAmCo, which covers:
 
-- **Unit Tests:** Jest + Supertest test suites for both services
-  - Product Service: 13 tests passing
-  - User Service: 12 tests passing
-- **Test Coverage:** Coverage reports generated in `coverage/` directories
-- **Continuous Testing:** Tests run automatically in CI/CD pipeline
+- Browsing and searching products (public)
+- User registration and login (Auth0)
+- Viewing stock levels (updates every 5 minutes)
+- Basic ordering functionality
+- Mock supplier API integration
 
-**Evidence:**
+## 1. Automated Testing ✓
 
-- `/product-service/index.test.js` (290 lines of comprehensive tests)
-- `/user-service/index.test.js` (test suites for all endpoints)
-- GitHub Actions workflow runs tests on every push/PR
+I wrote automated tests using Jest for both services:
 
----
+- Product Service: 13 tests - all passing
+- User Service: 12 tests - all passing
 
-### 2. Configuration Management (Test/Live Deployment) ✓
+The tests check things like product listing, search, health checks, and API endpoints. They run automatically whenever I push code to GitHub.
 
-**Implemented:**
+## 2. Configuration Management ✓
 
-- **Environment-specific configs:**
-  - `.env.development` - Local development configuration
-  - `.env.test` - Test environment configuration
-  - `.env.production` - Production/Azure configuration
-- **Docker Compose:** Orchestration for local/test deployment
-- **Environment Variables:** All services use env vars for configuration
+I set up different config files for different environments:
 
-**Evidence:**
+- `.env.development` - for local testing
+- `.env.test` - for running automated tests
+- `.env.production` - for Azure deployment
 
-- `.env.development`, `.env.test`, `.env.production` files
-- `docker-compose.yml` with environment configuration
-- Services read from `process.env` for all configuration
+This lets me test locally with Docker Compose and then deploy to Azure without changing any code.
 
----
+## 3. Security ✓
 
-### 3. Security Implementation ✓
+I implemented security in a few ways:
 
-**Implemented:**
+- **Auth0 Login:** Users log in with Auth0 instead of me storing passwords (safer)
+- **JWT Tokens:** Protected endpoints check for valid tokens
+- **CORS:** Only my frontend can call the APIs
+- **Rate Limiting:** Stops people from spamming requests (100 per 15 minutes)
+- **Helmet:** Adds security headers to prevent common attacks
 
-- **Authentication:** Auth0 OAuth2/OIDC with JWT bearer tokens
+## 4. Resilience (Handling Failures) ✓
+
+The system can handle problems without crashing:
+
+- **Timeouts:** If a service doesn't respond in 5 seconds, it moves on
+- **Fallback Data:** If the User Service is down, Product Service still works (returns "Unavailable" for user data)
+- **Graceful Shutdown:** Services close database connections properly when stopping
+- **Health Checks:** Each service has a `/health` endpoint so Docker knows if it's working
 - **Security Headers:** Helmet middleware for HTTP security headers
 - **CORS Protection:** Configured CORS with specific origins
 - **Rate Limiting:** Express-rate-limit to prevent abuse (100 req/15min)

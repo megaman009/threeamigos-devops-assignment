@@ -9,8 +9,8 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
     <Auth0Provider
-      domain="dev-placeholder.auth0.com"
-      clientId="YOUR_CLIENT_ID_HERE"
+      domain="dev-0dkhahbfgadu44x6.us.auth0.com"
+      clientId="4oJtRBSJyjDq2dgD0nzzmzVqipCtLEvX"
       authorizationParams={{
         redirect_uri: window.location.origin,
         audience: "https://thamco-user-api"

@@ -35,7 +35,7 @@ const { auth, requiredScopes } = require('express-oauth2-jwt-bearer');
 // Auth0 Configuration
 const checkJwt = auth({
   audience: process.env.AUTH0_AUDIENCE || 'https://thamco-user-api',
-  issuerBaseURL: process.env.AUTH0_ISSUER_BASE_URL || 'https://dev-placeholder.auth0.com/',
+  issuerBaseURL: process.env.AUTH0_ISSUER_BASE_URL || 'https://dev-0dkhahbfgadu44x6.us.auth0.com/',
   tokenSigningAlg: 'RS256'
 });
 
