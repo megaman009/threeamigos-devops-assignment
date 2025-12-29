@@ -1,10 +1,28 @@
 const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+
 const app = express();
 const PORT = 3001;
 
 const SERVICE_NAME = 'user-service';
 
+// Security Middleware
+app.use(helmet());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3002',
+  credentials: true
+}));
 app.use(express.json());
+
+// Rate Limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: 'Too many requests, please try again later.'
+});
+app.use(limiter);
 
 app.use((req, res, next) => {
   console.log(`[${SERVICE_NAME}] ${req.method} ${req.path}`);

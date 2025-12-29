@@ -3,9 +3,29 @@ const SERVICE_NAME = 'product-service';
 const express = require('express');
 const { Client } = require('pg');
 const redis = require('redis');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
+
+// Security Middleware
+app.use(helmet()); // Adds security headers
+app.use(cors({  // Enable CORS for frontend
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3002',
+  credentials: true
+}));
 app.use(express.json());
+
+// Rate Limiting (prevent abuse)
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/', limiter); // Apply to API routes
 
 // Global database clients
 let clients = { db: null, redis: null };
