@@ -6,8 +6,12 @@ function App() {
   const { loginWithRedirect, logout, user: auth0User, isAuthenticated, isLoading: authLoading, getAccessTokenSilently } = useAuth0();
   const [products, setProducts] = useState([]);
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(false); // Managed manually for data fetch
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [cart, setCart] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [orderSuccess, setOrderSuccess] = useState(null);
 
   // API Base URL from environment (or default to localhost:3000 for local dev)
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000';
@@ -25,6 +29,131 @@ function App() {
       setLoading(false);
     }
   }, [API_BASE]);
+
+  const searchProducts = async (query) => {
+    if (!query.trim()) {
+      fetchPublicProducts();
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch(`${API_BASE}/products/search?q=${encodeURIComponent(query)}`);
+      if (!response.ok) throw new Error('Search failed');
+      const data = await response.json();
+      setProducts(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addToCart = (product) => {
+    setCart(prevCart => {
+      const existing = prevCart.find(item => item.id === product.id);
+      if (existing) {
+        // Check if we're at stock limit
+        if (existing.quantity >= product.stock) {
+          setError(`Cannot add more - only ${product.stock} in stock!`);
+          setTimeout(() => setError(null), 3000);
+          return prevCart;
+        }
+        return prevCart.map(item =>
+          item.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        );
+      }
+      // Adding new item
+      if (product.stock < 1) {
+        setError(`${product.name} is out of stock!`);
+        setTimeout(() => setError(null), 3000);
+        return prevCart;
+      }
+      return [...prevCart, { ...product, quantity: 1 }];
+    });
+    setOrderSuccess(`Added ${product.name} to cart!`);
+    setTimeout(() => setOrderSuccess(null), 2000);
+  };
+
+  const removeFromCart = (productId) => {
+    setCart(prevCart => prevCart.filter(item => item.id !== productId));
+  };
+
+  const updateQuantity = (productId, newQuantity) => {
+    if (newQuantity < 1) {
+      removeFromCart(productId);
+      return;
+    }
+    
+    setCart(prevCart =>
+      prevCart.map(item => {
+        if (item.id === productId) {
+          // Check stock limit
+          if (newQuantity > item.stock) {
+            setError(`Only ${item.stock} available in stock!`);
+            setTimeout(() => setError(null), 3000);
+            return item; // Don't update quantity
+          }
+          return { ...item, quantity: newQuantity };
+        }
+        return item;
+      })
+    );
+  };
+
+  const placeOrder = async () => {
+    if (!isAuthenticated) {
+      alert('Please log in to place an order');
+      return;
+    }
+
+    if (cart.length === 0) {
+      alert('Your cart is empty');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const token = await getAccessTokenSilently();
+      
+      // Place order for each item in cart
+      const orderPromises = cart.map(item =>
+        fetch(`${API_BASE}/orders`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            productId: item.id,
+            quantity: item.quantity
+          })
+        })
+      );
+
+      const responses = await Promise.all(orderPromises);
+      const allSuccessful = responses.every(r => r.ok);
+      
+      if (!allSuccessful) {
+        throw new Error('Some orders failed to process');
+      }
+
+      setOrderSuccess('Order placed successfully! 🎉');
+      setCart([]);
+      setTimeout(() => setOrderSuccess(null), 5000);
+    } catch (err) {
+      setError(`Order failed: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   const fetchData = useCallback(async () => {
     try {
@@ -91,9 +220,62 @@ function App() {
 
       <main className="App-main">
         {error && <div className="error"><h3>❌ Error</h3><p>{error}</p></div>}
+        {orderSuccess && <div className="success"><h3>✅ {orderSuccess}</h3></div>}
+
+        {/* Shopping Cart */}
+        {cart.length > 0 && (
+          <section className="cart-section">
+            <h2>🛒 Shopping Cart ({cart.length} items)</h2>
+            <div className="cart-items">
+              {cart.map(item => (
+                <div key={item.id} className="cart-item">
+                  <div className="cart-item-info">
+                    <h4>{item.name}</h4>
+                    <p>${item.price} each</p>
+                  </div>
+                  <div className="cart-item-controls">
+                    <button onClick={() => updateQuantity(item.id, item.quantity - 1)}>-</button>
+                    <span>{item.quantity}</span>
+                    <button onClick={() => updateQuantity(item.id, item.quantity + 1)}>+</button>
+                    <button className="remove-btn" onClick={() => removeFromCart(item.id)}>Remove</button>
+                  </div>
+                  <div className="cart-item-total">
+                    ${(item.price * item.quantity).toFixed(2)}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="cart-summary">
+              <h3>Total: ${cartTotal.toFixed(2)}</h3>
+              <button 
+                className="checkout-btn" 
+                onClick={placeOrder}
+                disabled={loading || !isAuthenticated}
+              >
+                {isAuthenticated ? 'Place Order' : 'Log in to checkout'}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* Product Search */}
+        <section className="search-section">
+          <div className="search-bar">
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && searchProducts(searchQuery)}
+            />
+            <button onClick={() => searchProducts(searchQuery)}>🔍 Search</button>
+            <button onClick={() => { setSearchQuery(''); fetchPublicProducts(); }}>Clear</button>
+          </div>
+        </section>
 
         {loading && <div className="loading"><h3>⏳ Loading...</h3></div>}
 
+        {/* Products Grid */}
         {!loading && (
           <>
             <section className="products-section">
@@ -102,12 +284,52 @@ function App() {
                 {products.length > 0 ? products.map(product => (
                   <div key={product.id} className="product-card">
                     <h3>{product.name}</h3>
-                    <p>Price: ${product.price}</p>
-                    <p>Stock: {product.stock}</p>
+                    <p className="price">💰 ${product.price}</p>
+                    <p className="stock">📦 Stock: {product.stock}</p>
+                    <div className="product-actions">
+                      <button 
+                        className="details-btn" 
+                        onClick={() => setSelectedProduct(product)}
+                      >
+                        View Details
+                      </button>
+                      <button 
+                        className="add-btn" 
+                        onClick={() => addToCart(product)}
+                        disabled={product.stock === 0}
+                      >
+                        {product.stock > 0 ? 'Add to Cart' : 'Out of Stock'}
+                      </button>
+                    </div>
                   </div>
-                )) : <p>No products available.</p>}
+                )) : <p>No products found.</p>}
               </div>
             </section>
+
+            {/* Product Detail Modal */}
+            {selectedProduct && (
+              <div className="modal-overlay" onClick={() => setSelectedProduct(null)}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                  <button className="modal-close" onClick={() => setSelectedProduct(null)}>✕</button>
+                  <h2>{selectedProduct.name}</h2>
+                  <p className="modal-price">Price: ${selectedProduct.price}</p>
+                  <p className="modal-stock">Available Stock: {selectedProduct.stock}</p>
+                  <p className="modal-description">
+                    High-quality product from ThAmCo marketplace.
+                  </p>
+                  <button 
+                    className="modal-add-btn" 
+                    onClick={() => {
+                      addToCart(selectedProduct);
+                      setSelectedProduct(null);
+                    }}
+                    disabled={selectedProduct.stock === 0}
+                  >
+                    {selectedProduct.stock > 0 ? 'Add to Cart' : 'Out of Stock'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {isAuthenticated && user && (
               <section className="user-section">
@@ -123,7 +345,7 @@ function App() {
 
             {!isAuthenticated && (
               <section className="guest-notice">
-                <p>🔒 Log in to view your profile and account details.</p>
+                <p>🔒 Log in to place orders and view your profile.</p>
               </section>
             )}
           </>
