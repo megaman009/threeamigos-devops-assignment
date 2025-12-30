@@ -16,9 +16,10 @@ Azure deployment notes and scripts: [AZURE_DEPLOYMENT.md](AZURE_DEPLOYMENT.md)
 ## What It Does
 
 - Browse and search products
-- Shopping cart with stock limits
+- Shopping cart (demo)
 - Secure Auth0 login
-- Place orders
+- View/update profile
+- Request account deletion (deletes Auth0 user)
 - All running in Docker containers
 
 ## Running It
@@ -33,8 +34,8 @@ Open http://localhost:3002
 
 ## Services
 
-- **Product Service** (3000): Products, orders, search, PostgreSQL + Redis
-- **User Service** (3001): Auth0 login, user profiles
+- **Product Service** (3000): Products + search, mock supplier sync, PostgreSQL (Redis cache optional)
+- **User Service** (3001): Auth0-secured user profile + account deletion
 - **Frontend** (3002): React shopping interface
 
 ## Tech Stack
@@ -67,15 +68,16 @@ npm test --prefix user-service
 
 - Product browsing and search
 - Shopping cart (respects stock limits)
-- Secure checkout with Auth0
-- Orders saved to database
-- Redis caching for speed
+- Secure login with Auth0
+- Basic order APIs (demo)
+- Account deletion request (Auth0 user deletion)
+- Redis caching for speed (optional)
 
 **What's not built** (out of scope):
 
 - Payment processing
 - Admin dashboard
-- Email notifications
+- Real email sending (only mocked/logged)
 
 This implements ~20% of a full system to demonstrate microservices and DevOps concepts.
 

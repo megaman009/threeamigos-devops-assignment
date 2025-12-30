@@ -5,7 +5,7 @@
 
 ## Introduction
 
-For this assignment, I built about 20% of the ThAmCo e-commerce system, focusing on product browsing and user authentication. This report explains the technology choices I made and why.
+For this assignment, I built about 20% of the ThAmCo e-commerce system, focusing on product browsing/search and user authentication/profile management (including an account deletion request). This report explains the technology choices I made and why.
 
 ## Technology Decisions
 
@@ -47,8 +47,10 @@ I used Node.js for both backend services.
 **Redis:**
 
 - Caches product lists to make browsing faster
-- Updates every 5 minutes (as required)
+- Cache TTL is 5 minutes (so the UI can reflect changes regularly)
 - Reduces database load
+
+**Note:** Redis is optional in my implementation. If Redis is not configured (or fails to connect), the Product Service still works and just skips caching.
 
 **Trade-off:** Redis adds complexity but makes the app much faster.
 
@@ -62,6 +64,14 @@ I used Node.js for both backend services.
 - Industry standard approach
 
 **Downside:** Relies on external service, but that's acceptable for this project.
+
+### 5. Account Deletion (Why it’s done server-side)
+
+The brief requires that customers can request account deletion. For this project I implemented deletion of the Auth0 user using the Auth0 Management API.
+
+- The frontend calls a protected endpoint on the User Service.
+- The User Service (server-side) uses a machine-to-machine Auth0 app to delete the user.
+- The secret stays in the backend as an environment variable/Container App secret (not in the browser).
 
 ## DevOps Practices I Used
 
@@ -114,30 +124,21 @@ The system needs to keep working even when things go wrong:
 The system meets the assignment requirements and demonstrates cloud-capable, resilient microservices. The technology choices balance simplicity (for a student project) with real-world practices (Docker, CI/CD, Auth0).
 
 The main lesson: microservices add complexity but provide flexibility and resilience that's worth it for cloud deployments.
-F[Frontend (React, port 3002)]
-end
-subgraph Services
-PS[Product Service (Express, port 3000)]
-US[User Service (Express, port 3001)]
-end
-subgraph Data
-PG[(PostgreSQL)]
-RD[(Redis Cache)]
-end
-subgraph External
-AUTH0[Auth0 (OIDC)]
-end
 
-F -->|HTTP| PS
-PS -->|JWT-protected /user| US
-PS -->|SQL| PG
-PS -->|Cache| RD
-US -->|Verify JWT| AUTH0
+## Architecture Summary
 
-PS ---|Health: /health| PS
-US ---|Health: /health| US
+```mermaid
+graph LR
+  F[Frontend (React, 3002)] -->|HTTP/JSON| PS[Product Service (Express, 3000)]
+  F -->|HTTP/JSON + Bearer JWT| US[User Service (Express, 3001)]
 
-````
+  PS -->|SQL| PG[(PostgreSQL)]
+  PS -->|Cache (optional)| RD[(Redis)]
+
+  US -->|OIDC/JWT validation| AUTH0[Auth0]
+
+  PS -->|Service call (resilience demo)| US
+```
 
 ### API Flow (Resilience + Security)
 
@@ -168,7 +169,7 @@ sequenceDiagram
   else User service unavailable/unauthorized
     ProductService-->>Client: 200 { product, user: fallback }
   end
-````
+```
 
 ### Ports & Environment
 

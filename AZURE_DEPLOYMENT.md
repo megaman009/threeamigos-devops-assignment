@@ -17,7 +17,7 @@ For ThAmCo's startup, Azure makes sense because:
 - **User Service** → Azure Container Apps
 - **Frontend** → Containerized React app (Azure Container Apps)
 - **PostgreSQL Database** → Azure Database for PostgreSQL
-- **Redis Cache** → Azure Cache for Redis
+- **Redis Cache (optional)** → used locally via Docker Compose; on Azure it depends on subscription support
 
 ## 🚀 Quick Deploy (If You Have Azure CLI)
 
@@ -27,7 +27,7 @@ Run this script and it handles everything:
 ./setup-azure.sh
 ```
 
-It creates all the resources ThAmCo needs automatically.
+It creates the core resources (resource group, ACR, Container Apps, Postgres). If Redis creation fails due to subscription restrictions, you can still deploy without it (product caching is optional).
 
 ## 📋 Manual Deployment (Step by Step)
 
@@ -41,7 +41,7 @@ Think of this as a folder for all ThAmCo's cloud stuff.
 2. Search for "Resource groups"
 3. Click "Create"
 4. **Resource group name**: `threeamigos-rg`
-5. **Region**: East US (or closest to you)
+5. **Region**: pick the closest region to you (this repo’s live demo uses **UAE North**)
 6. Click "Review + create" → "Create"
 
 ### Step 2: Set Up the Database
@@ -52,7 +52,7 @@ ThAmCo needs a place to store products and orders.
 2. Click "Create"
 3. **Resource group**: Select `threeamigos-rg`
 4. **Server name**: `threeamigos-postgres` (has to be unique)
-5. **Region**: East US
+5. **Region**: same as your resource group
 6. **PostgreSQL version**: 15
 7. **Workload type**: Development (cheaper for testing)
 8. **Compute + storage**: Burstable, B1ms, 32 GB storage
@@ -60,10 +60,23 @@ ThAmCo needs a place to store products and orders.
 10. **Password**: Pick a strong password (write it down!)
 11. **Networking tab**:
 
+- Allow public access (fine for a student demo)
+- Add your current IP so you can connect if needed
+
+### Step 3: (Optional) Redis
+
+Redis is used as an optional cache in this project.
+
+- Locally: Redis runs in `docker-compose.yml`.
+- On Azure: Azure Cache for Redis may be blocked on some student subscriptions unless the `Microsoft.Cache` resource provider is registered.
+
+If Redis is not available on your subscription, deploy without it (product-service will still work; it will just skip caching).
+
 **"Redis connection failed"**
 
-- Check if Redis is running (portal shows status)
+- If you deployed Azure Cache for Redis, check the Redis resource status in the Portal
 - Verify `REDIS_URL` format: `rediss://:<REDIS_PRIMARY_KEY>@<hostname>:6380`
+- If you did not deploy Redis (common on student subscriptions), remove/omit Redis env vars so caching is disabled
 
 **"Auth0 login loops"**
 
@@ -155,48 +168,11 @@ After deployment, you'll have:
 - **Product API**: https://product-service-xyz.azurecontainerapps.io
 - **User API**: https://user-service-xyz.azurecontainerapps.io
 
-## 💰 Cost Information - Azure for Students
+## Cost / cleanup notes (student demo)
 
-### 🎓 **Azure for Students Benefits:**
+Azure costs vary by region and SKU. For this assignment, the safest approach is to deploy for a short demo window and then delete the resource group.
 
-- **$100 credit** for 12 months
-- **Free services** available
-- **No credit card required** initially
-
-### 💸 **Realistic Cost Breakdown:**
-
-**Free Tier Options Available:**
-
-- Container Apps: 2 million requests free/month
-- Container Registry: First 5GB free
-- PostgreSQL: Basic tier might be free for students
-- Redis: Basic C0 (256MB) is very cheap
-
-**Paid Services (if needed):**
-
-- Container Apps: ~$0.01/hour × 3 services = ~$0.75/day
-- PostgreSQL: ~$0.02/hour = ~$0.48/day
-- Redis: ~$0.01/hour = ~$0.24/day
-- **Total**: ~$1.47/day (but likely much less with free tiers)
-
-**For a 1-week demo:** ~$10-15 total (covered by student credit)
-
-### 🆓 **Free Alternatives:**
-
-1. **Railway** - Free tier for Node.js apps
-2. **Render** - Free PostgreSQL + web services
-3. **Fly.io** - Free tier with 256MB RAM
-4. **Vercel** - Free for frontend + serverless
-5. **GitHub Codespaces** - Free for public repos
-
-### 🎯 **Recommendation:**
-
-- Use **Azure free tiers** first (you have $100 credit)
-- Deploy for **3-5 days** only
-- **Delete resources** after demo
-- Total cost: **$5-10** for your assignment demo
-
-### 🗑️ **How to Delete Resources (Important!):**
+### Delete resources
 
 ```bash
 # Delete entire resource group (removes everything)
